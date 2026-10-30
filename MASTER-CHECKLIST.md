@@ -17,9 +17,9 @@
 - [ ] ORYVA-010 CI quality gates operational (initial build/typecheck workflow merged in [PR #3](https://github.com/sunstriker2009/sun-oryva/pull/3); dependency lockfile, executable tests and additional gates pending).
 
 ## M1–M5 — implementation
-- [ ] ORYVA-011 Docker/Keycloak/PostgreSQL development stack (local Compose baseline proposed; verify CI and runtime before completion).
-- [ ] ORYVA-012 Keycloak integration.
-- [ ] ORYVA-013 Idempotent sole-master bootstrap.
+- [x] ORYVA-011 Docker/Keycloak/PostgreSQL development stack baseline merged in [PR #6](https://github.com/sunstriker2009/sun-oryva/pull/6); runtime smoke test still recommended.
+- [ ] ORYVA-012 Keycloak integration (realm import merged in [PR #7](https://github.com/sunstriker2009/sun-oryva/pull/7); management client and integration tests pending).
+- [ ] ORYVA-013 Idempotent sole-master bootstrap (singleton PostgreSQL schema and recovery design proposed; service and concurrency tests pending).
 - [ ] ORYVA-014 OIDC authentication/session integration.
 - [ ] ORYVA-015 Backend role-based authorization.
 - [ ] ORYVA-016 User administration.
