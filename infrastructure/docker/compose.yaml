@@ -1,0 +1,40 @@
+name: oryva-local
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${ORYVA_DB_USER:?Set ORYVA_DB_USER}
+      POSTGRES_PASSWORD: ${ORYVA_DB_PASSWORD:?Set ORYVA_DB_PASSWORD}
+      POSTGRES_DB: ${ORYVA_DB_NAME:-oryva}
+    volumes:
+      - oryva_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ORYVA_DB_USER} -d ${ORYVA_DB_NAME:-oryva}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [identity]
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3.5
+    restart: unless-stopped
+    command: ["start-dev", "--http-host=0.0.0.0"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${ORYVA_DB_NAME:-oryva}
+      KC_DB_USERNAME: ${ORYVA_DB_USER:?Set ORYVA_DB_USER}
+      KC_DB_PASSWORD: ${ORYVA_DB_PASSWORD:?Set ORYVA_DB_PASSWORD}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${ORYVA_KC_ADMIN_USER:?Set ORYVA_KC_ADMIN_USER}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${ORYVA_KC_ADMIN_PASSWORD:?Set ORYVA_KC_ADMIN_PASSWORD}
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "127.0.0.1:${ORYVA_KC_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [identity]
+volumes:
+  oryva_pgdata:
+networks:
+  identity:
+    internal: false
