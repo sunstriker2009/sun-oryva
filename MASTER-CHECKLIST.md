@@ -10,9 +10,9 @@
 - [ ] ORYVA-005 Repository governance and branch protection configured.
 - [x] ORYVA-006 Design system migrated and squash-merged in [ORYVA PR #1](https://github.com/sunstriker2009/sun-oryva/pull/1) (source ecosystem PR #3 closed as superseded).
 - [x] ORYVA-007 Architecture documentation and ADRs squash-merged in [ORYVA PR #1](https://github.com/sunstriker2009/sun-oryva/pull/1).
-- [ ] ORYVA-008 .NET workspace scaffolded.
-- [ ] ORYVA-009 TypeScript workspace scaffolded.
-- [ ] ORYVA-010 CI quality gates operational.
+- [ ] ORYVA-008 .NET workspace scaffolded (proposed in M0 workspace PR; complete after merge and build verification).
+- [ ] ORYVA-009 TypeScript workspace scaffolded (proposed in M0 workspace PR; complete after merge and typecheck).
+- [ ] ORYVA-010 CI quality gates operational (initial build/typecheck workflow proposed; further quality gates pending).
 
 ## M1–M5 — implementation
 - [ ] ORYVA-011 Docker/Keycloak/PostgreSQL development stack.
