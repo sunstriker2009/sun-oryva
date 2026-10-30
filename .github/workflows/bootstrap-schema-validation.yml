@@ -1,0 +1,63 @@
+name: Bootstrap schema validation
+on:
+  pull_request:
+    paths:
+      - "infrastructure/postgres/**"
+      - ".github/workflows/bootstrap-schema-validation.yml"
+  push:
+    branches: [main]
+    paths:
+      - "infrastructure/postgres/**"
+      - ".github/workflows/bootstrap-schema-validation.yml"
+permissions:
+  contents: read
+jobs:
+  schema:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: ci_only
+          POSTGRES_USER: postgres
+          POSTGRES_DB: oryva_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d oryva_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      PGPASSWORD: ci_only
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Apply schema twice (idempotence)
+        run: |
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/001_master_bootstrap.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/001_master_bootstrap.sql
+      - name: Verify singleton and state constraints
+        run: |
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO oryva.master_bootstrap (singleton_id, state) VALUES (1, 'pending');
+          DO $$
+          BEGIN
+            BEGIN
+              INSERT INTO oryva.master_bootstrap (singleton_id, state) VALUES (2, 'pending');
+              RAISE EXCEPTION 'singleton check did not reject second row';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            BEGIN
+              UPDATE oryva.master_bootstrap SET state = 'active';
+              RAISE EXCEPTION 'state check did not reject missing subject';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+          END $$;
+          UPDATE oryva.master_bootstrap
+             SET state = 'active', subject_id = 'test-subject', activated_at = now()
+           WHERE singleton_id = 1;
+          SELECT CASE WHEN count(*) = 1 THEN 'ok' ELSE (1/0)::text END
+            FROM oryva.master_bootstrap WHERE state = 'active';
+          SQL
