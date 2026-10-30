@@ -1,0 +1,34 @@
+:root, [data-oryva-theme="dark"] {
+  color-scheme: dark;
+  --oryva-brand-gold: #F6C453;
+  --oryva-brand-amber: #FFB347;
+  --oryva-surface-canvas: #0B1020;
+  --oryva-surface-panel: #151D30;
+  --oryva-surface-raised: #202C43;
+  --oryva-text-primary: #F5F7FA;
+  --oryva-text-secondary: #BAC5D5;
+  --oryva-text-inverse: #0B1020;
+  --oryva-border-default: #45546B;
+  --oryva-border-focus: #F6C453;
+  --oryva-action-primary: #F6C453;
+  --oryva-action-primary-text: #0B1020;
+  --oryva-state-success: #7EE0AD;
+  --oryva-state-warning: #FFD083;
+  --oryva-state-danger: #FF9B9B;
+  --oryva-state-info: #8BC5FF;
+  --oryva-font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --oryva-radius-control: 8px;
+  --oryva-radius-card: 12px;
+  --oryva-radius-dialog: 16px;
+  --oryva-space-1: 4px;
+  --oryva-space-2: 8px;
+  --oryva-space-3: 12px;
+  --oryva-space-4: 16px;
+  --oryva-space-6: 24px;
+  --oryva-space-8: 32px;
+  --oryva-space-12: 48px;
+  --oryva-space-16: 64px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
