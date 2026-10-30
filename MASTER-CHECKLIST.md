@@ -2,6 +2,8 @@
 
 **Product:** SUN-001 · **Updated:** 2026-10-30 · **Legend:** [x] completed; [ ] pending. PR links are added when opened.
 
+**Technology baseline:** .NET 10+, ASP.NET Core 10+, EF Core 10+ (where applicable), C# 14+. All new SUN product backend development follows this minimum.
+
 ## M0 — foundation
 - [x] ORYVA-001 Product naming and technical namespace approved.
 - [x] ORYVA-002 Ecosystem design-system PR #3 reviewed.
