@@ -1,0 +1,35 @@
+name: CI
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Build backend projects
+        run: |
+          dotnet build src/backend/Sun.Security.Abstractions/Sun.Security.Abstractions.csproj -c Release
+          dotnet build src/backend/Sun.Security.AspNetCore/Sun.Security.AspNetCore.csproj -c Release
+          dotnet build tests/unit/Sun.Security.UnitTests/Sun.Security.UnitTests.csproj -c Release
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm build
