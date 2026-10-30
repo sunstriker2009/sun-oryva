@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - "infrastructure/docker/**"
+      - "infrastructure/keycloak/**"
       - ".github/workflows/infra-validation.yml"
   push:
     branches: [main]
@@ -24,3 +25,17 @@ jobs:
           ORYVA_KC_ADMIN_USER: ci_admin
           ORYVA_KC_ADMIN_PASSWORD: ci_only_not_a_real_secret
         run: docker compose -f compose.yaml config --quiet
+      - name: Validate realm JSON and required roles
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("infrastructure/keycloak/oryva-realm.json")
+          data = json.loads(p.read_text())
+          assert data["realm"] == "oryva"
+          assert data["enabled"] is True
+          assert data["registrationAllowed"] is False
+          assert data["users"] == [] and data["clients"] == []
+          roles = [role["name"] for role in data["roles"]["realm"]]
+          assert len(roles) == len(set(roles)) and set(roles) == {"master", "admin", "viewer"}
+          PY

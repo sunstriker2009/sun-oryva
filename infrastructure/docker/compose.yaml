@@ -18,7 +18,7 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.3.5
     restart: unless-stopped
-    command: ["start-dev", "--http-host=0.0.0.0"]
+    command: ["start-dev", "--http-host=0.0.0.0", "--import-realm"]
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/${ORYVA_DB_NAME:-oryva}
@@ -27,6 +27,8 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${ORYVA_KC_ADMIN_USER:?Set ORYVA_KC_ADMIN_USER}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${ORYVA_KC_ADMIN_PASSWORD:?Set ORYVA_KC_ADMIN_PASSWORD}
       KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ../keycloak/oryva-realm.json:/opt/keycloak/data/import/oryva-realm.json:ro
     ports:
       - "127.0.0.1:${ORYVA_KC_PORT:-8080}:8080"
     depends_on:

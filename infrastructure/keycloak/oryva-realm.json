@@ -1,0 +1,37 @@
+{
+  "realm": "oryva",
+  "enabled": true,
+  "displayName": "ORYVA by Sun",
+  "registrationAllowed": false,
+  "registrationEmailAsUsername": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "verifyEmail": true,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 5,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxFailureWaitSeconds": 900,
+  "maxDeltaTimeSeconds": 43200,
+  "roles": {
+    "realm": [
+      {
+        "name": "master",
+        "description": "Exactly one ORYVA master per deployment; exclusivity enforced by management bootstrap, not Keycloak role itself"
+      },
+      {
+        "name": "admin",
+        "description": "Privileged ORYVA administrator; creation restricted to master"
+      },
+      {
+        "name": "viewer",
+        "description": "Read-only ORYVA user"
+      }
+    ]
+  },
+  "clients": [],
+  "users": []
+}
