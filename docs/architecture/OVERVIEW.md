@@ -43,7 +43,7 @@ flowchart TB
 - Consumer applications: business data and domain-specific administrative operations.
 
 ## Engineering approach
-Modular monolith management API initially; independently deployable from consumers. .NET 8+; TypeScript; PostgreSQL only for ORYVA-owned state; Docker development. Prefer OIDC Authorization Code + PKCE; decide browser token/session strategy in an ADR before implementation.
+Modular monolith management API initially; independently deployable from consumers. .NET 10+ / ASP.NET Core 10+ / EF Core 10+ (where applicable), C# 14+; TypeScript; PostgreSQL only for ORYVA-owned state; Docker development. Prefer OIDC Authorization Code + PKCE; decide browser token/session strategy in an ADR before implementation.
 
 ## Planned monorepo
 ```text
