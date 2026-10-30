@@ -1,0 +1,26 @@
+name: Infrastructure validation
+on:
+  pull_request:
+    paths:
+      - "infrastructure/docker/**"
+      - ".github/workflows/infra-validation.yml"
+  push:
+    branches: [main]
+    paths:
+      - "infrastructure/docker/**"
+      - ".github/workflows/infra-validation.yml"
+permissions:
+  contents: read
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose schema and required variables
+        working-directory: infrastructure/docker
+        env:
+          ORYVA_DB_USER: ci_user
+          ORYVA_DB_PASSWORD: ci_only_not_a_real_secret
+          ORYVA_KC_ADMIN_USER: ci_admin
+          ORYVA_KC_ADMIN_PASSWORD: ci_only_not_a_real_secret
+        run: docker compose -f compose.yaml config --quiet
