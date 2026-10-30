@@ -1,0 +1,159 @@
+{
+  "$schema": "https://design-tokens.github.io/community-group/format/",
+  "name": "ORYVA dark v1",
+  "status": "proposed",
+  "color": {
+    "brand": {
+      "gold": {
+        "$value": "#F6C453",
+        "$type": "color"
+      },
+      "amber": {
+        "$value": "#FFB347",
+        "$type": "color"
+      }
+    },
+    "surface": {
+      "canvas": {
+        "$value": "#0B1020",
+        "$type": "color"
+      },
+      "panel": {
+        "$value": "#151D30",
+        "$type": "color"
+      },
+      "raised": {
+        "$value": "#202C43",
+        "$type": "color"
+      }
+    },
+    "text": {
+      "primary": {
+        "$value": "#F5F7FA",
+        "$type": "color"
+      },
+      "secondary": {
+        "$value": "#BAC5D5",
+        "$type": "color"
+      },
+      "inverse": {
+        "$value": "#0B1020",
+        "$type": "color"
+      }
+    },
+    "border": {
+      "default": {
+        "$value": "#45546B",
+        "$type": "color"
+      },
+      "focus": {
+        "$value": "#F6C453",
+        "$type": "color"
+      }
+    },
+    "action": {
+      "primary": {
+        "$value": "#F6C453",
+        "$type": "color"
+      },
+      "primaryText": {
+        "$value": "#0B1020",
+        "$type": "color"
+      }
+    },
+    "state": {
+      "success": {
+        "$value": "#7EE0AD",
+        "$type": "color"
+      },
+      "warning": {
+        "$value": "#FFD083",
+        "$type": "color"
+      },
+      "danger": {
+        "$value": "#FF9B9B",
+        "$type": "color"
+      },
+      "info": {
+        "$value": "#8BC5FF",
+        "$type": "color"
+      }
+    }
+  },
+  "spacing": {
+    "4": {
+      "$value": "4px",
+      "$type": "dimension"
+    },
+    "8": {
+      "$value": "8px",
+      "$type": "dimension"
+    },
+    "12": {
+      "$value": "12px",
+      "$type": "dimension"
+    },
+    "16": {
+      "$value": "16px",
+      "$type": "dimension"
+    },
+    "24": {
+      "$value": "24px",
+      "$type": "dimension"
+    },
+    "32": {
+      "$value": "32px",
+      "$type": "dimension"
+    },
+    "48": {
+      "$value": "48px",
+      "$type": "dimension"
+    },
+    "64": {
+      "$value": "64px",
+      "$type": "dimension"
+    }
+  },
+  "radius": {
+    "control": {
+      "$value": "8px",
+      "$type": "dimension"
+    },
+    "card": {
+      "$value": "12px",
+      "$type": "dimension"
+    },
+    "dialog": {
+      "$value": "16px",
+      "$type": "dimension"
+    }
+  },
+  "typography": {
+    "family": {
+      "$value": "Inter, system-ui, -apple-system, Segoe UI, sans-serif",
+      "$type": "fontFamily"
+    },
+    "bodySize": {
+      "$value": "16px",
+      "$type": "dimension"
+    },
+    "smallSize": {
+      "$value": "14px",
+      "$type": "dimension"
+    },
+    "headingSize": {
+      "$value": "32px",
+      "$type": "dimension"
+    }
+  },
+  "motion": {
+    "fast": {
+      "$value": "120ms",
+      "$type": "duration"
+    },
+    "normal": {
+      "$value": "200ms",
+      "$type": "duration"
+    }
+  }
+}
