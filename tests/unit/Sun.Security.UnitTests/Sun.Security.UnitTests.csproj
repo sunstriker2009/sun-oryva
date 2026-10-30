@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../../../src/backend/Sun.Security.Abstractions/Sun.Security.Abstractions.csproj" />
+  </ItemGroup>
+</Project>
