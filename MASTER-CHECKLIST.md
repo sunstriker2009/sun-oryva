@@ -8,8 +8,8 @@
 - [x] ORYVA-003 Architecture direction approved.
 - [x] ORYVA-004 Repository created by owner.
 - [ ] ORYVA-005 Repository governance and branch protection configured.
-- [ ] ORYVA-006 Design system migrated **and merged** (source: https://github.com/sunstriker2009/sun-ecosystem/pull/3).
-- [ ] ORYVA-007 Architecture documentation and ADRs **merged**.
+- [x] ORYVA-006 Design system migrated and squash-merged in [ORYVA PR #1](https://github.com/sunstriker2009/sun-oryva/pull/1) (source ecosystem PR #3 closed as superseded).
+- [x] ORYVA-007 Architecture documentation and ADRs squash-merged in [ORYVA PR #1](https://github.com/sunstriker2009/sun-oryva/pull/1).
 - [ ] ORYVA-008 .NET workspace scaffolded.
 - [ ] ORYVA-009 TypeScript workspace scaffolded.
 - [ ] ORYVA-010 CI quality gates operational.
@@ -27,3 +27,8 @@
 - [ ] ORYVA-020 MarketPilot integration.
 
 **Rule:** A proposed PR does not count as completed until merged and verified. No functional authentication features have been implemented.
+
+## Cross-repository governance
+- [x] SUN ecosystem links to ORYVA via [ecosystem PR #4](https://github.com/sunstriker2009/sun-ecosystem/pull/4), squash-merged.
+- [x] Source [ecosystem PR #3](https://github.com/sunstriker2009/sun-ecosystem/pull/3) closed as superseded, without merging detailed specifications into ecosystem.
+- [x] Product-line merge convention: squash merge PRs; no direct main commits.
