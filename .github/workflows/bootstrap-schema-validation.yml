@@ -58,11 +58,11 @@ jobs:
           UPDATE oryva.master_bootstrap
              SET state = 'active', subject_id = 'test-subject', activated_at = now()
            WHERE singleton_id = 1;
-          DO $$$$
+          DO $$
           BEGIN
             IF (SELECT count(*) FROM oryva.master_bootstrap
                 WHERE state = 'active' AND subject_id = 'test-subject') <> 1 THEN
               RAISE EXCEPTION 'expected exactly one active master reservation';
             END IF;
-          END $$$$;
+          END $$;
           SQL
