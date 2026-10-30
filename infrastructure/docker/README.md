@@ -21,3 +21,7 @@
 - No realm import, client configuration, master-account bootstrap, OIDC integration, authorization, or audit functionality is implemented by this PR.
 - Production requires TLS, hostname configuration, dedicated DB credentials, secret manager integration, image digest pinning, hardened Keycloak startup and backup/restore strategy.
 - Image tags are pinned for reproducibility within a release series; review updates and vulnerabilities regularly.
+
+## ORYVA realm initialization
+
+On an empty database, Keycloak imports the versioned `oryva` realm with three role definitions from `../keycloak/oryva-realm.json`. Existing realms are not overwritten. See [realm configuration](../keycloak/README.md). No users or application clients are created.
