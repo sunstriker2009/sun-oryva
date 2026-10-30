@@ -1,0 +1,82 @@
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json.Serialization;
+
+namespace Sun.Security.Bootstrap;
+
+/// <summary>
+/// Restricted Keycloak management API adapter. No credentials or tokens are logged.
+/// Caller owns authorization, reconciliation and sole-master policy enforcement.
+/// </summary>
+public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagementOptions options)
+{
+    public async Task<KeycloakUser?> FindUserByUsernameAsync(
+        string username, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        options.Validate();
+        var token = await GetTokenAsync(cancellationToken);
+        var path = $"admin/realms/{Uri.EscapeDataString(options.Realm)}/users?username={Uri.EscapeDataString(username)}&exact=true&max=2";
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(options.BaseAddress, path));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var response = await http.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        var users = await response.Content.ReadFromJsonAsync<List<KeycloakUser>>(cancellationToken);
+        if (users is null || users.Count == 0) return null;
+        if (users.Count != 1 || !string.Equals(users[0].Username, username, StringComparison.Ordinal))
+            throw new InvalidOperationException("Ambiguous Keycloak user lookup.");
+        return users[0];
+    }
+
+    /// <summary>Creates a disabled identity. Does not assign roles, credentials or enable it.</summary>
+    public async Task CreateDisabledUserAsync(
+        string username, string email, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentException.ThrowIfNullOrWhiteSpace(email);
+        options.Validate();
+        var token = await GetTokenAsync(cancellationToken);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            new Uri(options.BaseAddress, $"admin/realms/{Uri.EscapeDataString(options.Realm)}/users"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Content = JsonContent.Create(new
+        {
+            username,
+            email,
+            enabled = false,
+            emailVerified = false
+        });
+        using var response = await http.SendAsync(request, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.Conflict)
+            throw new InvalidOperationException("Keycloak user already exists; reconcile before proceeding.");
+        response.EnsureSuccessStatusCode();
+    }
+
+    private async Task<string> GetTokenAsync(CancellationToken cancellationToken)
+    {
+        using var body = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["grant_type"] = "client_credentials",
+            ["client_id"] = options.ClientId,
+            ["client_secret"] = options.ClientSecret
+        });
+        using var response = await http.PostAsync(
+            new Uri(options.BaseAddress, $"realms/{Uri.EscapeDataString(options.Realm)}/protocol/openid-connect/token"),
+            body, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        var payload = await response.Content.ReadFromJsonAsync<KeycloakToken>(cancellationToken)
+            ?? throw new InvalidOperationException("Empty Keycloak token response.");
+        if (string.IsNullOrWhiteSpace(payload.AccessToken))
+            throw new InvalidOperationException("Missing Keycloak access token.");
+        return payload.AccessToken;
+    }
+
+    private sealed record KeycloakToken([property: JsonPropertyName("access_token")] string AccessToken);
+}
+
+public sealed record KeycloakUser(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("username")] string Username,
+    [property: JsonPropertyName("enabled")] bool Enabled);
