@@ -15,7 +15,7 @@
 - [ ] ORYVA-010 CI quality gates operational (initial build/typecheck workflow merged in [PR #3](https://github.com/sunstriker2009/sun-oryva/pull/3); dependency lockfile, executable tests and additional gates pending).
 
 ## M1–M5 — implementation
-- [ ] ORYVA-011 Docker/Keycloak/PostgreSQL development stack.
+- [ ] ORYVA-011 Docker/Keycloak/PostgreSQL development stack (local Compose baseline proposed; verify CI and runtime before completion).
 - [ ] ORYVA-012 Keycloak integration.
 - [ ] ORYVA-013 Idempotent sole-master bootstrap.
 - [ ] ORYVA-014 OIDC authentication/session integration.
