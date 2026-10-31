@@ -115,6 +115,27 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
     }
 
     /// <summary>
+    /// Low-level identity enablement transport. Call only from the guarded coordinator.
+    /// A lost response must be reconciled by rereading Keycloak before retrying.
+    /// </summary>
+    public async Task EnableUserAsync(
+        string subjectId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(subjectId);
+        options.Validate();
+        var token = await GetTokenAsync(cancellationToken);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Put,
+            new Uri(options.BaseAddress,
+                $"admin/realms/{Uri.EscapeDataString(options.Realm)}/users/{Uri.EscapeDataString(subjectId)}"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Content = JsonContent.Create(new { enabled = true });
+        using var response = await http.SendAsync(request, cancellationToken);
+        KeycloakHttpClientFactory.EnsureNoRedirect(response);
+        response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>
     /// Low-level realm role mapping transport. This method does not enforce the
     /// sole-master policy; callers must use the guarded coordinator.
     /// </summary>
