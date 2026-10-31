@@ -9,6 +9,45 @@ public sealed class MasterProvisioningCoordinator(
     MasterReservationStore reservations,
     KeycloakManagementClient keycloak)
 {
+    /// <summary>
+    /// Sets the initial credential only for an owned, disabled candidate while
+    /// holding the deployment-wide provisioning lock. Never touches active users.
+    /// </summary>
+    public async Task SetPreparedInitialPasswordAsync(
+        string username,
+        string deploymentIdentifier,
+        string initialPassword,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentException.ThrowIfNullOrWhiteSpace(deploymentIdentifier);
+        ArgumentException.ThrowIfNullOrWhiteSpace(initialPassword);
+        if (initialPassword.Length < 16)
+            throw new ArgumentException("Initial password must be at least 16 characters.", nameof(initialPassword));
+
+        await using var lease = await provisioningLock.TryAcquireAsync(cancellationToken)
+            ?? throw new InvalidOperationException("Another master provisioning operation is running.");
+
+        var reservation = await reservations.ReserveAsync(cancellationToken);
+        if (reservation.IsActive)
+            throw new InvalidOperationException("Cannot reset credentials after master activation.");
+
+        var members = await keycloak.GetMasterRoleMembersAsync(cancellationToken);
+        if (members.Count != 0)
+            throw new InvalidOperationException("Master role already assigned; credential setup refused.");
+
+        var user = await keycloak.FindUserByUsernameAsync(username, cancellationToken);
+        var marker = MasterIdentityOwnership.ComputeMarker(deploymentIdentifier);
+        if (user is null || user.Enabled || string.IsNullOrWhiteSpace(user.Id) ||
+            user.Attributes is null ||
+            !user.Attributes.TryGetValue(MasterIdentityOwnership.AttributeName, out var markers) ||
+            markers is null || markers.Count != 1 ||
+            !string.Equals(markers[0], marker, StringComparison.Ordinal))
+            throw new InvalidOperationException("Identity is not an owned, disabled bootstrap candidate.");
+
+        await keycloak.SetInitialPasswordAsync(user.Id, initialPassword, cancellationToken);
+    }
+
     public async Task<MasterProvisioningResult> PrepareAsync(
         string username,
         string email,

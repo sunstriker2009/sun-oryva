@@ -85,6 +85,31 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
         response.EnsureSuccessStatusCode();
     }
 
+    /// <summary>
+    /// Sets an initial password for a disabled bootstrap identity.
+    /// Caller must hold the provisioning lease and verify ownership.
+    /// Never log or persist the password.
+    /// </summary>
+    public async Task SetInitialPasswordAsync(
+        string subjectId, string password, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(subjectId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(password);
+        if (password.Length < 16)
+            throw new ArgumentException("Initial master password must be at least 16 characters.", nameof(password));
+
+        options.Validate();
+        var token = await GetTokenAsync(cancellationToken);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Put,
+            new Uri(options.BaseAddress,
+                $"admin/realms/{Uri.EscapeDataString(options.Realm)}/users/{Uri.EscapeDataString(subjectId)}/reset-password"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Content = JsonContent.Create(new { type = "password", value = password, temporary = false });
+        using var response = await http.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
+
     /// <summary>Returns all direct members of the realm-level master role; paginated and fail-closed.</summary>
     public async Task<IReadOnlyList<KeycloakUser>> GetMasterRoleMembersAsync(
         CancellationToken cancellationToken = default)
