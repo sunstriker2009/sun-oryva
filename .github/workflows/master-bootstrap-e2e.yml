@@ -1,0 +1,71 @@
+name: M1 full-stack master bootstrap E2E
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  master-bootstrap-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_only
+          POSTGRES_DB: oryva_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d oryva_e2e"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      ORYVA_TEST_DATABASE_URL: Host=127.0.0.1;Port=5432;Database=oryva_e2e;Username=postgres;Password=ci_only
+      ORYVA_TEST_KEYCLOAK_ADMIN: ci-admin
+      ORYVA_TEST_KEYCLOAK_PASSWORD: ci-only-not-production
+      ORYVA_TEST_CLIENT_SECRET: ci-e2e-secret-only-not-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Initialize PostgreSQL schema
+        run: |
+          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/001_master_bootstrap.sql
+      - name: Start Keycloak
+        run: |
+          docker run -d --name oryva-e2e-keycloak -p 8080:8080 \
+            -e KC_BOOTSTRAP_ADMIN_USERNAME=ci-admin \
+            -e KC_BOOTSTRAP_ADMIN_PASSWORD=ci-only-not-production \
+            -v "$PWD/infrastructure/keycloak/oryva-realm.json:/opt/keycloak/data/import/oryva-realm.json:ro" \
+            quay.io/keycloak/keycloak:26.3.5 start-dev --import-realm
+      - name: Wait for Keycloak readiness
+        run: |
+          python - <<'PY'
+          import time, urllib.request
+          url = "http://127.0.0.1:8080/realms/oryva/.well-known/openid-configuration"
+          for _ in range(90):
+              try:
+                  with urllib.request.urlopen(url, timeout=3) as response:
+                      if response.status == 200:
+                          break
+              except OSError:
+                  pass
+              time.sleep(2)
+          else:
+              raise SystemExit("Keycloak did not become ready")
+          PY
+      - name: Configure restricted test service account
+        run: python tests/integration/setup_keycloak_e2e.py
+      - name: Run actual .NET bootstrap against Keycloak and PostgreSQL
+        run: dotnet run --project tests/integration/Sun.Security.Bootstrap.E2E/Sun.Security.Bootstrap.E2E.csproj -c Release
+      - name: Keycloak logs on failure
+        if: failure()
+        run: docker logs oryva-e2e-keycloak --tail 120

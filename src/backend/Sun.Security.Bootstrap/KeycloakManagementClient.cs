@@ -27,7 +27,27 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
         if (users is null || users.Count == 0) return null;
         if (users.Count != 1 || !string.Equals(users[0].Username, username, StringComparison.Ordinal))
             throw new InvalidOperationException("Ambiguous Keycloak user lookup.");
-        return users[0];
+        // Keycloak's user search representation may omit custom attributes.
+        // Fetch the canonical user representation before ownership validation.
+        if (string.IsNullOrWhiteSpace(users[0].Id))
+            throw new InvalidOperationException("Keycloak user lookup returned no subject ID.");
+        using var detailRequest = new HttpRequestMessage(HttpMethod.Get,
+            new Uri(options.BaseAddress,
+                $"admin/realms/{Uri.EscapeDataString(options.Realm)}/users/{Uri.EscapeDataString(users[0].Id)}"));
+        detailRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var detailResponse = await http.SendAsync(detailRequest, cancellationToken);
+        KeycloakHttpClientFactory.EnsureNoRedirect(detailResponse);
+        detailResponse.EnsureSuccessStatusCode();
+        var fullUser = await detailResponse.Content.ReadFromJsonAsync<KeycloakUser>(cancellationToken)
+            ?? throw new InvalidOperationException("Keycloak user detail response was empty.");
+        if (!string.Equals(fullUser.Id, users[0].Id, StringComparison.Ordinal) ||
+            !string.Equals(fullUser.Username, username, StringComparison.Ordinal))
+            throw new InvalidOperationException("Keycloak user detail did not match lookup.");
+        if (fullUser.Attributes is null ||
+            !fullUser.Attributes.ContainsKey(MasterIdentityOwnership.AttributeName))
+            throw new InvalidOperationException(
+                "Keycloak user detail omitted ORYVA ownership attribute; verify service-account view-users permissions and user-profile attribute configuration.");
+        return fullUser;
     }
 
     /// <summary>Creates a disabled identity. Does not assign roles, credentials or enable it.</summary>
@@ -113,6 +133,27 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
         KeycloakHttpClientFactory.EnsureNoRedirect(response);
         response.EnsureSuccessStatusCode();
     }
+
+    /// <summary>Checks Keycloak credential metadata; never retrieves password values.</summary>
+    public async Task<bool> HasPasswordCredentialAsync(
+        string subjectId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(subjectId);
+        options.Validate();
+        var token = await GetTokenAsync(cancellationToken);
+        using var request = new HttpRequestMessage(HttpMethod.Get,
+            new Uri(options.BaseAddress,
+                $"admin/realms/{Uri.EscapeDataString(options.Realm)}/users/{Uri.EscapeDataString(subjectId)}/credentials"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var response = await http.SendAsync(request, cancellationToken);
+        KeycloakHttpClientFactory.EnsureNoRedirect(response);
+        response.EnsureSuccessStatusCode();
+        var credentials = await response.Content.ReadFromJsonAsync<List<KeycloakCredentialType>>(cancellationToken)
+            ?? throw new InvalidOperationException("Missing Keycloak credential metadata.");
+        return credentials.Any(c => string.Equals(c.Type, "password", StringComparison.Ordinal));
+    }
+
+    private sealed record KeycloakCredentialType([property: JsonPropertyName("type")] string Type);
 
     /// <summary>
     /// Low-level identity enablement transport. Call only from the guarded coordinator.
