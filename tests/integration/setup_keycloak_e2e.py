@@ -98,3 +98,26 @@ finally:
     call(f"/admin/realms/oryva/users/{probe_id}", "DELETE", token=token)
 
 print("PASS configured isolated service account")
+
+
+# Dedicated public test client with password grant enabled only for isolated CI.
+# Explicit audience mapper ensures the API's aud validation is exercised.
+api_client = {
+    "clientId": "oryva-e2e-api", "enabled": True, "protocol": "openid-connect",
+    "publicClient": True, "standardFlowEnabled": False,
+    "directAccessGrantsEnabled": True, "fullScopeAllowed": True,
+    "protocolMappers": [{
+        "name": "oryva-api-audience", "protocol": "openid-connect",
+        "protocolMapper": "oidc-audience-mapper",
+        "consentRequired": False,
+        "config": {
+            "included.custom.audience": "oryva-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+        }
+    }]
+}
+status, _ = call("/admin/realms/oryva/clients", "POST",
+                 json.dumps(api_client).encode(), token)
+assert status == 201
+print("PASS dedicated CI JWT client and API audience configured")
