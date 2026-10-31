@@ -29,6 +29,13 @@ static async Task RejectAsync(Func<Task> operation, string scenario)
 }
 if (await store.GetActiveMasterSubjectAsync() is not null)
     throw new Exception("Fresh deployment already has active master.");
+await using (var competingLease = await provisioningLock.TryAcquireAsync()
+    ?? throw new Exception("Failed to acquire test provisioning lease."))
+{
+    await RejectAsync(
+        () => coordinator.PrepareAsync(username, "master@example.invalid", deployment),
+        "concurrent coordinator blocked by advisory lease");
+}
 await coordinator.PrepareAsync(username, "master@example.invalid", deployment);
 await coordinator.PrepareAsync(username, "master@example.invalid", deployment); // restart recovery
 await RejectAsync(() => coordinator.EnablePreparedMasterAsync(username, deployment), "missing role/password");
