@@ -43,6 +43,10 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
         if (!string.Equals(fullUser.Id, users[0].Id, StringComparison.Ordinal) ||
             !string.Equals(fullUser.Username, username, StringComparison.Ordinal))
             throw new InvalidOperationException("Keycloak user detail did not match lookup.");
+        if (fullUser.Attributes is null ||
+            !fullUser.Attributes.ContainsKey(MasterIdentityOwnership.AttributeName))
+            throw new InvalidOperationException(
+                "Keycloak user detail omitted ORYVA ownership attribute; verify service-account view-users permissions and user-profile attribute configuration.");
         return fullUser;
     }
 
