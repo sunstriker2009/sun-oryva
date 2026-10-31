@@ -2,6 +2,7 @@
   <ItemGroup>
     <ProjectReference Include="../Sun.Security.Abstractions/Sun.Security.Abstractions.csproj" />
     <ProjectReference Include="../Sun.Security.Bootstrap/Sun.Security.Bootstrap.csproj" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 </Project>
