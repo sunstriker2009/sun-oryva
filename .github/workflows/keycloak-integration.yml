@@ -1,0 +1,41 @@
+name: Keycloak master role mapping integration
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  keycloak-integration:
+    runs-on: ubuntu-latest
+    services:
+      keycloak:
+        image: quay.io/keycloak/keycloak:26.3.5
+        env:
+          KC_BOOTSTRAP_ADMIN_USERNAME: ci-admin
+          KC_BOOTSTRAP_ADMIN_PASSWORD: ci-only-not-production
+          KC_HTTP_ENABLED: "true"
+        ports:
+          - 8080:8080
+        options: >-
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      ORYVA_TEST_KEYCLOAK_ADMIN: ci-admin
+      ORYVA_TEST_KEYCLOAK_PASSWORD: ci-only-not-production
+      ORYVA_KEYCLOAK_URL: http://127.0.0.1:8080
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create test realm with master role
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          realm = json.loads(Path("infrastructure/keycloak/oryva-realm.json").read_text())
+          assert realm["realm"] == "oryva"
+          assert any(r["name"] == "master" for r in realm["roles"]["realm"])
+          PY
+      - name: Run Keycloak integration test
+        run: python tests/integration/keycloak_master_role_mapping.py
