@@ -21,6 +21,7 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
         using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(options.BaseAddress, path));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         using var response = await http.SendAsync(request, cancellationToken);
+        KeycloakHttpClientFactory.EnsureNoRedirect(response);
         response.EnsureSuccessStatusCode();
         var users = await response.Content.ReadFromJsonAsync<List<KeycloakUser>>(cancellationToken);
         if (users is null || users.Count == 0) return null;
@@ -51,6 +52,7 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
         using var response = await http.SendAsync(request, cancellationToken);
         if (response.StatusCode == HttpStatusCode.Conflict)
             throw new InvalidOperationException("Keycloak user already exists; reconcile before proceeding.");
+        KeycloakHttpClientFactory.EnsureNoRedirect(response);
         response.EnsureSuccessStatusCode();
     }
 
@@ -82,6 +84,7 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
         using var response = await http.SendAsync(request, cancellationToken);
         if (response.StatusCode == HttpStatusCode.Conflict)
             throw new InvalidOperationException("Keycloak username already exists; reconcile before proceeding.");
+        KeycloakHttpClientFactory.EnsureNoRedirect(response);
         response.EnsureSuccessStatusCode();
     }
 
@@ -107,6 +110,7 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         request.Content = JsonContent.Create(new { type = "password", value = password, temporary = false });
         using var response = await http.SendAsync(request, cancellationToken);
+        KeycloakHttpClientFactory.EnsureNoRedirect(response);
         response.EnsureSuccessStatusCode();
     }
 
@@ -126,6 +130,7 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
             HttpMethod.Get, new Uri(options.BaseAddress, $"admin/realms/{realm}/roles/master"));
         lookup.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         using var roleResponse = await http.SendAsync(lookup, cancellationToken);
+        KeycloakHttpClientFactory.EnsureNoRedirect(roleResponse);
         roleResponse.EnsureSuccessStatusCode();
         var role = await roleResponse.Content.ReadFromJsonAsync<KeycloakRealmRole>(cancellationToken)
             ?? throw new InvalidOperationException("Master role lookup returned no representation.");
@@ -140,6 +145,7 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
         assign.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         assign.Content = JsonContent.Create(new[] { role });
         using var response = await http.SendAsync(assign, cancellationToken);
+        KeycloakHttpClientFactory.EnsureNoRedirect(response);
         response.EnsureSuccessStatusCode();
     }
 
@@ -163,7 +169,8 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
                     $"admin/realms/{Uri.EscapeDataString(options.Realm)}/roles/master/users?first={first}&max={pageSize}"));
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             using var response = await http.SendAsync(request, cancellationToken);
-            response.EnsureSuccessStatusCode();
+            KeycloakHttpClientFactory.EnsureNoRedirect(response);
+        response.EnsureSuccessStatusCode();
             var page = await response.Content.ReadFromJsonAsync<List<KeycloakUser>>(cancellationToken)
                 ?? throw new InvalidOperationException("Invalid Keycloak role membership response.");
             members.AddRange(page);
@@ -185,6 +192,7 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
         using var response = await http.PostAsync(
             new Uri(options.BaseAddress, $"realms/{Uri.EscapeDataString(options.Realm)}/protocol/openid-connect/token"),
             body, cancellationToken);
+        KeycloakHttpClientFactory.EnsureNoRedirect(response);
         response.EnsureSuccessStatusCode();
         var payload = await response.Content.ReadFromJsonAsync<KeycloakToken>(cancellationToken)
             ?? throw new InvalidOperationException("Empty Keycloak token response.");
