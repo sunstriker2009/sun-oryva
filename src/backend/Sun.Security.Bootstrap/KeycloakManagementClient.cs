@@ -114,6 +114,27 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
         response.EnsureSuccessStatusCode();
     }
 
+    /// <summary>Checks Keycloak credential metadata; never retrieves password values.</summary>
+    public async Task<bool> HasPasswordCredentialAsync(
+        string subjectId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(subjectId);
+        options.Validate();
+        var token = await GetTokenAsync(cancellationToken);
+        using var request = new HttpRequestMessage(HttpMethod.Get,
+            new Uri(options.BaseAddress,
+                $"admin/realms/{Uri.EscapeDataString(options.Realm)}/users/{Uri.EscapeDataString(subjectId)}/credentials"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var response = await http.SendAsync(request, cancellationToken);
+        KeycloakHttpClientFactory.EnsureNoRedirect(response);
+        response.EnsureSuccessStatusCode();
+        var credentials = await response.Content.ReadFromJsonAsync<List<KeycloakCredentialType>>(cancellationToken)
+            ?? throw new InvalidOperationException("Missing Keycloak credential metadata.");
+        return credentials.Any(c => string.Equals(c.Type, "password", StringComparison.Ordinal));
+    }
+
+    private sealed record KeycloakCredentialType([property: JsonPropertyName("type")] string Type);
+
     /// <summary>
     /// Low-level identity enablement transport. Call only from the guarded coordinator.
     /// A lost response must be reconciled by rereading Keycloak before retrying.
