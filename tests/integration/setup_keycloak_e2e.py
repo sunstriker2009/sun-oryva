@@ -50,6 +50,21 @@ assert {r["name"] for r in assigned} == needed
 path = f"/admin/realms/oryva/users/{service_user['id']}/role-mappings/clients/{realm_management[0]['id']}"
 status, _ = call(path, "POST", json.dumps(assigned).encode(), token)
 assert status == 204
+# Keycloak 26 does not apply this custom user-profile component from realm import.
+# Configure the effective profile through the supported Admin API.
+profile_path = "/admin/realms/oryva/users/profile"
+profile = call(profile_path, token=token)[1]
+attributes = profile.setdefault("attributes", [])
+owner_name = "oryva.bootstrap.owner"
+if not any(a.get("name") == owner_name for a in attributes):
+    attributes.append({
+        "name": owner_name,
+        "multivalued": False,
+        "permissions": {"view": ["admin"], "edit": ["admin"]}
+    })
+    status, _ = call(profile_path, "PUT", json.dumps(profile).encode(), token)
+    assert status == 200, f"Unexpected Keycloak profile update status: {status}"
+
 # Verify the effective Keycloak user-profile configuration, not merely realm JSON.
 profile = call("/admin/realms/oryva/users/profile", token=token)[1]
 ownership = next((a for a in profile.get("attributes", [])
