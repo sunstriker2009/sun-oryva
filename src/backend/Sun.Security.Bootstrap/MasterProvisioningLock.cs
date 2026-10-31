@@ -56,8 +56,8 @@ public sealed class MasterProvisioningLock(NpgsqlDataSource dataSource)
 
             await using var command = new NpgsqlCommand(
                 "SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' " +
-                "AND pid = pg_backend_pid() AND granted AND classid = @high " +
-                "AND objid = @low AND objsubid = 1)", connection);
+                "AND pid = pg_backend_pid() AND granted AND classid::bigint = @high " +
+                "AND objid::bigint = @low AND objsubid = 1)", connection);
             command.Parameters.AddWithValue("high", (long)(uint)(lockKey >> 32));
             command.Parameters.AddWithValue("low", (long)(uint)lockKey);
             var held = (bool)(await command.ExecuteScalarAsync(cancellationToken)
