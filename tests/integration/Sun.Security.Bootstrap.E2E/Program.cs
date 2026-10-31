@@ -27,7 +27,7 @@ static async Task RejectAsync(Func<Task> operation, string scenario)
     catch (InvalidOperationException) { Console.WriteLine("PASS rejected: " + scenario); return; }
     throw new Exception("Expected rejection: " + scenario);
 }
-if (await store.GetActiveMasterSubjectAsync() is not null)
+if ((await store.ReserveAsync()).IsActive)
     throw new Exception("Fresh deployment already has active master.");
 await using (var competingLease = await provisioningLock.TryAcquireAsync()
     ?? throw new Exception("Failed to acquire test provisioning lease."))
