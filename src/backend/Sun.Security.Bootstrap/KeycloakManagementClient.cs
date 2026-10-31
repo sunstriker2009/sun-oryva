@@ -110,6 +110,43 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
         response.EnsureSuccessStatusCode();
     }
 
+    /// <summary>
+    /// Low-level realm role mapping transport. This method does not enforce the
+    /// sole-master policy; callers must use the guarded coordinator.
+    /// </summary>
+    public async Task AddMasterRoleMappingAsync(
+        string subjectId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(subjectId);
+        options.Validate();
+        var realm = Uri.EscapeDataString(options.Realm);
+        var token = await GetTokenAsync(cancellationToken);
+
+        using var lookup = new HttpRequestMessage(
+            HttpMethod.Get, new Uri(options.BaseAddress, $"admin/realms/{realm}/roles/master"));
+        lookup.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var roleResponse = await http.SendAsync(lookup, cancellationToken);
+        roleResponse.EnsureSuccessStatusCode();
+        var role = await roleResponse.Content.ReadFromJsonAsync<KeycloakRealmRole>(cancellationToken)
+            ?? throw new InvalidOperationException("Master role lookup returned no representation.");
+        if (string.IsNullOrWhiteSpace(role.Id) ||
+            !string.Equals(role.Name, "master", StringComparison.Ordinal))
+            throw new InvalidOperationException("Invalid Keycloak master role representation.");
+
+        using var assign = new HttpRequestMessage(
+            HttpMethod.Post,
+            new Uri(options.BaseAddress,
+                $"admin/realms/{realm}/users/{Uri.EscapeDataString(subjectId)}/role-mappings/realm"));
+        assign.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        assign.Content = JsonContent.Create(new[] { role });
+        using var response = await http.SendAsync(assign, cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
+
+    private sealed record KeycloakRealmRole(
+        [property: JsonPropertyName("id")] string Id,
+        [property: JsonPropertyName("name")] string Name);
+
     /// <summary>Returns all direct members of the realm-level master role; paginated and fail-closed.</summary>
     public async Task<IReadOnlyList<KeycloakUser>> GetMasterRoleMembersAsync(
         CancellationToken cancellationToken = default)
