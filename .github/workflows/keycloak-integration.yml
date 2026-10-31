@@ -9,33 +9,21 @@ permissions:
 jobs:
   keycloak-integration:
     runs-on: ubuntu-latest
-    services:
-      keycloak:
-        image: quay.io/keycloak/keycloak:26.3.5
-        env:
-          KC_BOOTSTRAP_ADMIN_USERNAME: ci-admin
-          KC_BOOTSTRAP_ADMIN_PASSWORD: ci-only-not-production
-          KC_HTTP_ENABLED: "true"
-        ports:
-          - 8080:8080
-        options: >-
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 30
     env:
       ORYVA_TEST_KEYCLOAK_ADMIN: ci-admin
       ORYVA_TEST_KEYCLOAK_PASSWORD: ci-only-not-production
       ORYVA_KEYCLOAK_URL: http://127.0.0.1:8080
     steps:
       - uses: actions/checkout@v4
-      - name: Create test realm with master role
+      - name: Start isolated Keycloak with imported ORYVA realm
         run: |
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          realm = json.loads(Path("infrastructure/keycloak/oryva-realm.json").read_text())
-          assert realm["realm"] == "oryva"
-          assert any(r["name"] == "master" for r in realm["roles"]["realm"])
-          PY
+          docker run -d --name oryva-keycloak -p 8080:8080 \
+            -e KC_BOOTSTRAP_ADMIN_USERNAME=ci-admin \
+            -e KC_BOOTSTRAP_ADMIN_PASSWORD=ci-only-not-production \
+            -v "$PWD/infrastructure/keycloak/oryva-realm.json:/opt/keycloak/data/import/oryva-realm.json:ro" \
+            quay.io/keycloak/keycloak:26.3.5 start-dev --import-realm
       - name: Run Keycloak integration test
         run: python tests/integration/keycloak_master_role_mapping.py
+      - name: Print Keycloak diagnostics on failure
+        if: failure()
+        run: docker logs oryva-keycloak --tail 100
