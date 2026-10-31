@@ -9,14 +9,10 @@ public sealed class MasterIdentityVerifier(
     KeycloakManagementClient keycloak)
 {
     /// <summary>
-    /// Reconcile an existing master identity. Never creates users, assigns roles,
-    /// changes credentials or enables accounts.
-    /// </summary>
-    /// <summary>
     /// Verifies the deployment ownership marker and exactly one enabled master
     /// before recording activation. The caller must coordinate external mutations.
     /// </summary>
-    public async Task<MasterReservation> VerifyOwnedAndActivateAsync(
+    public async Task<MasterReservation> VerifyAndActivateAsync(
         string expectedUsername,
         string deploymentIdentifier,
         CancellationToken cancellationToken = default)
@@ -44,31 +40,6 @@ public sealed class MasterIdentityVerifier(
         if (reservation.IsActive &&
             !string.Equals(reservation.SubjectId, user.Id, StringComparison.Ordinal))
             throw new InvalidOperationException("Database master subject differs from Keycloak.");
-
-        return await reservations.ActivateVerifiedAsync(user.Id, cancellationToken);
-    }
-
-    public async Task<MasterReservation> VerifyAndActivateAsync(
-        string expectedUsername,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(expectedUsername);
-
-        var reservation = await reservations.ReserveAsync(cancellationToken);
-        var user = await keycloak.FindUserByUsernameAsync(expectedUsername, cancellationToken)
-            ?? throw new InvalidOperationException("Expected master identity does not exist in Keycloak.");
-
-        if (!user.Enabled || string.IsNullOrWhiteSpace(user.Id))
-            throw new InvalidOperationException("Master identity is disabled or has no subject identifier.");
-
-        var members = await keycloak.GetMasterRoleMembersAsync(cancellationToken);
-        if (members.Count != 1 ||
-            !string.Equals(members[0].Id, user.Id, StringComparison.Ordinal) ||
-            !members[0].Enabled)
-            throw new InvalidOperationException("Keycloak must have exactly one enabled master role member matching the expected identity.");
-
-        if (reservation.IsActive && !string.Equals(reservation.SubjectId, user.Id, StringComparison.Ordinal))
-            throw new InvalidOperationException("Database master does not match the verified Keycloak subject.");
 
         return await reservations.ActivateVerifiedAsync(user.Id, cancellationToken);
     }
