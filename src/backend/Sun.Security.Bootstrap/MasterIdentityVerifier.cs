@@ -45,6 +45,7 @@ public sealed class MasterIdentityVerifier(
             !string.Equals(reservation.SubjectId, user.Id, StringComparison.Ordinal))
             throw new InvalidOperationException("Database master subject differs from Keycloak.");
 
+        await lease.EnsureHeldAsync(cancellationToken);
         return await reservations.ActivateVerifiedAsync(user.Id, cancellationToken);
     }
 }

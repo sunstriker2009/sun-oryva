@@ -51,6 +51,7 @@ public sealed class MasterProvisioningCoordinator(
         {
             if (members[0].Enabled)
                 throw new InvalidOperationException("Master role membership state is inconsistent.");
+            await lease.EnsureHeldAsync(cancellationToken);
             await keycloak.EnableUserAsync(candidate.Id, cancellationToken);
         }
 
@@ -104,6 +105,7 @@ public sealed class MasterProvisioningCoordinator(
             !string.Equals(markers[0], marker, StringComparison.Ordinal))
             throw new InvalidOperationException("Identity is not an owned, disabled bootstrap candidate.");
 
+        await lease.EnsureHeldAsync(cancellationToken);
         await keycloak.SetInitialPasswordAsync(user.Id, initialPassword, cancellationToken);
     }
 
@@ -136,6 +138,7 @@ public sealed class MasterProvisioningCoordinator(
         {
             // An ambiguous remote response must be reconciled on the next run.
             // Never blindly retry the POST in this invocation.
+            await lease.EnsureHeldAsync(cancellationToken);
             await keycloak.AddMasterRoleMappingAsync(candidate!.Id, cancellationToken);
         }
 
@@ -175,6 +178,7 @@ public sealed class MasterProvisioningCoordinator(
         {
             // The create endpoint returns no stable ID. Always re-query after creation,
             // including when the response was lost; never blindly retry a failed POST.
+            await lease.EnsureHeldAsync(cancellationToken);
             await keycloak.CreateDisabledOwnedUserAsync(username, email, marker, cancellationToken);
             existing = await keycloak.FindUserByUsernameAsync(username, cancellationToken);
         }

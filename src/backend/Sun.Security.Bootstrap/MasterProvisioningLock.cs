@@ -28,7 +28,7 @@ public sealed class MasterProvisioningLock(NpgsqlDataSource dataSource)
                 return null;
             }
 
-            return new Lease(connection);
+            return new Lease(connection, LockKey);
         }
         catch
         {
@@ -41,9 +41,31 @@ public sealed class MasterProvisioningLock(NpgsqlDataSource dataSource)
     /// The lease owns its database connection. Keep it alive throughout Keycloak
     /// operations. Never share the underlying connection with other callers.
     /// </summary>
-    public sealed class Lease(NpgsqlConnection connection) : IAsyncDisposable
+    public sealed class Lease(NpgsqlConnection connection, long lockKey) : IAsyncDisposable
     {
         private int _disposed;
+
+        /// <summary>
+        /// Confirms this PostgreSQL session still holds the advisory lock.
+        /// Best-effort continuity check, not a fencing token.
+        /// </summary>
+        public async Task EnsureHeldAsync(CancellationToken cancellationToken = default)
+        {
+            if (Volatile.Read(ref _disposed) != 0)
+                throw new InvalidOperationException("Provisioning lease is disposed.");
+
+            await using var command = new NpgsqlCommand(
+                "SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' " +
+                "AND pid = pg_backend_pid() AND granted AND classid::bigint = @high " +
+                "AND objid::bigint = @low AND objsubid = 1)", connection);
+            command.Parameters.AddWithValue("high", (long)(uint)(lockKey >> 32));
+            command.Parameters.AddWithValue("low", (long)(uint)lockKey);
+            var held = (bool)(await command.ExecuteScalarAsync(cancellationToken)
+                ?? throw new InvalidOperationException("Provisioning lease check returned no result."));
+            if (!held)
+                throw new InvalidOperationException("Provisioning advisory lock was lost.");
+        }
+
 
         public async ValueTask DisposeAsync()
         {
