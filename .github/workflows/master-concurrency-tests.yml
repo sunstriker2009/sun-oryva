@@ -38,4 +38,4 @@ jobs:
       - name: Initialize schema
         run: psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/001_master_bootstrap.sql
       - name: Run concurrency and recovery tests
-        run: python -m unittest discover -s tests/integration -p "master_reservation_*.py" -v
+        run: python -m unittest discover -s tests/integration -p "*test.py" -v
