@@ -33,5 +33,72 @@
     ]
   },
   "clients": [],
-  "users": []
+  "users": [],
+  "userProfile": {
+    "attributes": [
+      {
+        "name": "username",
+        "permissions": {
+          "view": [
+            "admin",
+            "user"
+          ],
+          "edit": [
+            "admin"
+          ]
+        }
+      },
+      {
+        "name": "email",
+        "permissions": {
+          "view": [
+            "admin",
+            "user"
+          ],
+          "edit": [
+            "admin",
+            "user"
+          ]
+        }
+      },
+      {
+        "name": "firstName",
+        "permissions": {
+          "view": [
+            "admin",
+            "user"
+          ],
+          "edit": [
+            "admin",
+            "user"
+          ]
+        }
+      },
+      {
+        "name": "lastName",
+        "permissions": {
+          "view": [
+            "admin",
+            "user"
+          ],
+          "edit": [
+            "admin",
+            "user"
+          ]
+        }
+      },
+      {
+        "name": "oryva.bootstrap.owner",
+        "multivalued": false,
+        "permissions": {
+          "view": [
+            "admin"
+          ],
+          "edit": [
+            "admin"
+          ]
+        }
+      }
+    ]
+  }
 }
