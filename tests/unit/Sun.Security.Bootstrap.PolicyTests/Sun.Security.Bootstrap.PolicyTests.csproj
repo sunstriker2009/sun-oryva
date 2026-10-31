@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/backend/Sun.Security.Bootstrap/Sun.Security.Bootstrap.csproj" />
+  </ItemGroup>
+</Project>
