@@ -1,3 +1,12 @@
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using System.Security.Claims;
+using System.Text.Encodings.Web;
+using Sun.Security.AspNetCore;
 using Npgsql;
 using Sun.Security.Bootstrap;
 
@@ -73,4 +82,62 @@ Console.WriteLine("PASS M2 active subject binding and invalid subject/role denia
 await RejectAsync(() => coordinator.PrepareAsync("another-master", "other@example.invalid", deployment), "second master");
 await RejectAsync(() => coordinator.SetPreparedInitialPasswordAsync(username, deployment, password), "password reset after activation");
 await RejectAsync(() => coordinator.EnablePreparedMasterAsync(username, deployment), "enable after activation");
+
+// Exercise the production authorization policy through ASP.NET Core's real
+// authentication/authorization middleware, with a TEST-ONLY identity scheme.
+// Keycloak token signature/issuer validation is outside this test's scope.
+var webBuilder = Microsoft.AspNetCore.Builder.WebApplication.CreateBuilder(
+    new Microsoft.AspNetCore.Builder.WebApplicationOptions { EnvironmentName = "Development" });
+webBuilder.WebHost.UseTestServer();
+webBuilder.Services.AddSingleton(dataSource);
+webBuilder.Services.AddScoped<MasterReservationStore>();
+webBuilder.Services.AddAuthentication("E2E")
+    .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions,
+        E2EAuthenticationHandler>("E2E", _ => { });
+webBuilder.Services.AddOryvaActiveMasterPolicy();
+await using (var webApp = webBuilder.Build())
+{
+    webApp.UseAuthentication();
+    webApp.UseAuthorization();
+    webApp.MapGet("/test/master", () => Microsoft.AspNetCore.Http.Results.Ok())
+        .RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
+    await webApp.StartAsync();
+    using var client = webApp.GetTestClient();
+    async Task ExpectHttpAsync(string? subject, bool master, System.Net.HttpStatusCode expected)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/test/master");
+        if (subject is not null)
+        {
+            request.Headers.Add("X-E2E-Subject", subject);
+            if (master) request.Headers.Add("X-E2E-Master", "true");
+        }
+        using var response = await client.SendAsync(request);
+        if (response.StatusCode != expected)
+            throw new Exception($"HTTP policy expected {(int)expected}, got {(int)response.StatusCode} for {subject}");
+    }
+    await ExpectHttpAsync(null, false, System.Net.HttpStatusCode.Unauthorized);
+    await ExpectHttpAsync(active.SubjectId, false, System.Net.HttpStatusCode.Forbidden);
+    await ExpectHttpAsync("wrong-subject", true, System.Net.HttpStatusCode.Forbidden);
+    await ExpectHttpAsync(active.SubjectId, true, System.Net.HttpStatusCode.OK);
+    Console.WriteLine("PASS M2 HTTP middleware: 401 anonymous, 403 role/subject mismatch, 200 active master");
+    await webApp.StopAsync();
+}
 Console.WriteLine("PASS full .NET/Keycloak/PostgreSQL master bootstrap and recovery");
+
+sealed class E2EAuthenticationHandler(
+    IOptionsMonitor<AuthenticationSchemeOptions> options,
+    ILoggerFactory logger, UrlEncoder encoder)
+    : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+{
+    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+    {
+        if (!Request.Headers.TryGetValue("X-E2E-Subject", out var subject))
+            return Task.FromResult(AuthenticateResult.NoResult());
+        var claims = new List<Claim> { new("sub", subject.ToString()) };
+        if (Request.Headers.TryGetValue("X-E2E-Master", out var role) && role == "true")
+            claims.Add(new Claim("oryva_realm_role", "master"));
+        var identity = new ClaimsIdentity(claims, Scheme.Name);
+        return Task.FromResult(AuthenticateResult.Success(
+            new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme.Name)));
+    }
+}
