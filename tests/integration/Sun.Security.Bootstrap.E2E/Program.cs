@@ -36,6 +36,11 @@ await using (var competingLease = await provisioningLock.TryAcquireAsync()
         () => coordinator.PrepareAsync(username, "master@example.invalid", deployment),
         "concurrent coordinator blocked by advisory lease");
 }
+var probe = await keycloak.FindUserByUsernameAsync(username);
+Console.WriteLine("Keycloak pre-prepare: exists=" + (probe is not null) +
+    ", enabled=" + probe?.Enabled +
+    ", hasOwnerAttribute=" + (probe?.Attributes?.ContainsKey(MasterIdentityOwnership.AttributeName) ?? false) +
+    ", ownerCount=" + (probe?.Attributes?.GetValueOrDefault(MasterIdentityOwnership.AttributeName)?.Count ?? 0));
 await coordinator.PrepareAsync(username, "master@example.invalid", deployment);
 await coordinator.PrepareAsync(username, "master@example.invalid", deployment); // restart recovery
 await RejectAsync(() => coordinator.EnablePreparedMasterAsync(username, deployment), "missing role/password");
