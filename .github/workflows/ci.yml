@@ -20,6 +20,7 @@ jobs:
           dotnet build src/backend/Sun.Security.AspNetCore/Sun.Security.AspNetCore.csproj -c Release
           dotnet build tests/unit/Sun.Security.UnitTests/Sun.Security.UnitTests.csproj -c Release
           dotnet build src/backend/Sun.Security.Bootstrap/Sun.Security.Bootstrap.csproj -c Release
+          dotnet run --project tests/unit/Sun.Security.Bootstrap.PolicyTests/Sun.Security.Bootstrap.PolicyTests.csproj -c Release
   frontend:
     runs-on: ubuntu-latest
     steps:
