@@ -1,0 +1,56 @@
+namespace Sun.Security.Bootstrap;
+
+/// <summary>
+/// Safe first phase of master bootstrap: serialize, reserve and reconcile ownership.
+/// Does not assign roles, set credentials, or enable accounts.
+/// </summary>
+public sealed class MasterProvisioningCoordinator(
+    MasterProvisioningLock provisioningLock,
+    MasterReservationStore reservations,
+    KeycloakManagementClient keycloak)
+{
+    public async Task<MasterProvisioningResult> PrepareAsync(
+        string username,
+        string email,
+        string deploymentIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentException.ThrowIfNullOrWhiteSpace(email);
+        ArgumentException.ThrowIfNullOrWhiteSpace(deploymentIdentifier);
+
+        await using var lease = await provisioningLock.TryAcquireAsync(cancellationToken)
+            ?? throw new InvalidOperationException("Another master provisioning operation is running.");
+
+        var reservation = await reservations.ReserveAsync(cancellationToken);
+        if (reservation.IsActive)
+            return new MasterProvisioningResult("already-active", reservation.SubjectId);
+
+        var marker = MasterIdentityOwnership.ComputeMarker(deploymentIdentifier);
+        var existing = await keycloak.FindUserByUsernameAsync(username, cancellationToken);
+        if (existing is null)
+        {
+            // The create endpoint returns no stable ID. Always re-query after creation,
+            // including when the response was lost; never blindly retry a failed POST.
+            await keycloak.CreateDisabledOwnedUserAsync(username, email, marker, cancellationToken);
+            existing = await keycloak.FindUserByUsernameAsync(username, cancellationToken);
+        }
+
+        if (existing is null || existing.Enabled ||
+            !string.Equals(existing.Username, username, StringComparison.Ordinal) ||
+            string.IsNullOrWhiteSpace(existing.Id) ||
+            existing.Attributes is null ||
+            !existing.Attributes.TryGetValue(MasterIdentityOwnership.AttributeName, out var markers) ||
+            markers is null || markers.Count != 1 ||
+            !string.Equals(markers[0], marker, StringComparison.Ordinal))
+            throw new InvalidOperationException("Existing identity is not a disabled, owned bootstrap identity.");
+
+        var members = await keycloak.GetMasterRoleMembersAsync(cancellationToken);
+        if (members.Count != 0)
+            throw new InvalidOperationException("Master role is already assigned; manual reconciliation required.");
+
+        return new MasterProvisioningResult("prepared-disabled", existing.Id);
+    }
+}
+
+public sealed record MasterProvisioningResult(string State, string? SubjectId);
