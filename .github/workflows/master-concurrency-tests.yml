@@ -1,0 +1,41 @@
+name: Master reservation concurrency
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  reservation:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_only
+          POSTGRES_DB: oryva_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d oryva_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      PGPASSWORD: ci_only
+      ORYVA_TEST_DATABASE_URL: postgresql://postgres:ci_only@localhost:5432/oryva_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install test dependencies
+        run: pip install "psycopg[binary]>=3.2,<4"
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Initialize schema
+        run: psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/001_master_bootstrap.sql
+      - name: Run concurrency and recovery tests
+        run: python -m unittest discover -s tests/integration -p "master_reservation_*.py" -v
