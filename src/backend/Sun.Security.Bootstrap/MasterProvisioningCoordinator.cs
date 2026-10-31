@@ -45,6 +45,9 @@ public sealed class MasterProvisioningCoordinator(
             !string.Equals(members[0].Id, candidate.Id, StringComparison.Ordinal))
             throw new InvalidOperationException("Expected identity must be the sole direct master role member.");
 
+        if (!await keycloak.HasPasswordCredentialAsync(candidate.Id, cancellationToken))
+            throw new InvalidOperationException("Master identity has no configured password credential.");
+
         // A previously completed PUT may have lost its response. Accept only an
         // already-enabled, still-owned candidate with matching sole membership.
         if (!candidate.Enabled)
