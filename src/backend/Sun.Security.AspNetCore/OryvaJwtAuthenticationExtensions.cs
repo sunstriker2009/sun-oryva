@@ -60,8 +60,11 @@ public static class OryvaJwtAuthenticationExtensions
 
                         // Only derive the internal role from the validated realm_access
                         // JSON claim; never accept an incoming or client role as trusted.
-                        foreach (var claim in identity.FindAll("oryva_realm_role").ToArray())
-                            identity.RemoveClaim(claim);
+                        if (identity.HasClaim(claim => claim.Type == "oryva_realm_role"))
+                        {
+                            context.Fail("Untrusted internal role claim present in access token.");
+                            return Task.CompletedTask;
+                        }
                         var realmClaims = identity.FindAll("realm_access").ToArray();
                         if (realmClaims.Length != 1)
                             return Task.CompletedTask;
