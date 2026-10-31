@@ -43,9 +43,9 @@ static async Task VerifyRoleMappingTransportAsync()
         calls.Add(request.Method + " " + request.RequestUri!.AbsolutePath);
         var path = request.RequestUri.AbsolutePath;
         if (path.EndsWith("/protocol/openid-connect/token", StringComparison.Ordinal))
-            return Json("{\\"access_token\\":\\"test-token\\"}");
+            return Json("""{"access_token":"test-token"}""");
         if (path.EndsWith("/roles/master", StringComparison.Ordinal))
-            return Json("{\\"id\\":\\"role-123\\",\\"name\\":\\"master\\"}");
+            return Json("""{"id":"role-123","name":"master"}""");
         if (path.EndsWith("/users/subject-a/role-mappings/realm", StringComparison.Ordinal))
         {
             if (request.Method != HttpMethod.Post ||
@@ -53,7 +53,7 @@ static async Task VerifyRoleMappingTransportAsync()
                 request.Headers.Authorization.Parameter != "test-token")
                 throw new Exception("Missing authorized role mapping POST.");
             var body = await request.Content!.ReadAsStringAsync();
-            if (!body.Contains("\\"role-123\\"") || !body.Contains("\\"master\\""))
+            if (!body.Contains(""" "role-123" """.Trim()) || !body.Contains(""" "master" """.Trim()))
                 throw new Exception("Invalid role representation.");
             return new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.NoContent);
         }
