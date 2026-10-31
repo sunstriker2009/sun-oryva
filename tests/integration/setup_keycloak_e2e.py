@@ -50,4 +50,36 @@ assert {r["name"] for r in assigned} == needed
 path = f"/admin/realms/oryva/users/{service_user['id']}/role-mappings/clients/{realm_management[0]['id']}"
 status, _ = call(path, "POST", json.dumps(assigned).encode(), token)
 assert status == 204
+# Verify the effective Keycloak user-profile configuration, not merely realm JSON.
+profile = call("/admin/realms/oryva/users/profile", token=token)[1]
+ownership = next((a for a in profile.get("attributes", [])
+                  if a.get("name") == "oryva.bootstrap.owner"), None)
+if ownership is None:
+    raise RuntimeError("Effective Keycloak user profile lacks oryva.bootstrap.owner")
+permissions = ownership.get("permissions", {})
+if "admin" not in permissions.get("view", []) or "admin" not in permissions.get("edit", []):
+    raise RuntimeError("Bootstrap ownership attribute lacks admin view/edit permissions")
+print("PASS effective Keycloak user profile permits bootstrap ownership attribute")
+
+# Validate persistence with a throwaway identity before running the real bootstrap.
+probe_username = "oryva-profile-probe"
+probe_marker = "profile-persistence-test"
+probe = {
+    "username": probe_username, "enabled": False,
+    "attributes": {"oryva.bootstrap.owner": [probe_marker]}
+}
+status, _ = call("/admin/realms/oryva/users", "POST", json.dumps(probe).encode(), token)
+assert status == 201
+found = call("/admin/realms/oryva/users?username=" + probe_username + "&exact=true",
+             token=token)[1]
+assert len(found) == 1
+probe_id = found[0]["id"]
+try:
+    detail = call(f"/admin/realms/oryva/users/{probe_id}", token=token)[1]
+    if detail.get("attributes", {}).get("oryva.bootstrap.owner") != [probe_marker]:
+        raise RuntimeError("Keycloak did not persist or expose bootstrap ownership marker")
+    print("PASS Keycloak ownership attribute persisted and is readable")
+finally:
+    call(f"/admin/realms/oryva/users/{probe_id}", "DELETE", token=token)
+
 print("PASS configured isolated service account")
