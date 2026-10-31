@@ -27,7 +27,23 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
         if (users is null || users.Count == 0) return null;
         if (users.Count != 1 || !string.Equals(users[0].Username, username, StringComparison.Ordinal))
             throw new InvalidOperationException("Ambiguous Keycloak user lookup.");
-        return users[0];
+        // Keycloak's user search representation may omit custom attributes.
+        // Fetch the canonical user representation before ownership validation.
+        if (string.IsNullOrWhiteSpace(users[0].Id))
+            throw new InvalidOperationException("Keycloak user lookup returned no subject ID.");
+        using var detailRequest = new HttpRequestMessage(HttpMethod.Get,
+            new Uri(options.BaseAddress,
+                $"admin/realms/{Uri.EscapeDataString(options.Realm)}/users/{Uri.EscapeDataString(users[0].Id)}"));
+        detailRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var detailResponse = await http.SendAsync(detailRequest, cancellationToken);
+        KeycloakHttpClientFactory.EnsureNoRedirect(detailResponse);
+        detailResponse.EnsureSuccessStatusCode();
+        var fullUser = await detailResponse.Content.ReadFromJsonAsync<KeycloakUser>(cancellationToken)
+            ?? throw new InvalidOperationException("Keycloak user detail response was empty.");
+        if (!string.Equals(fullUser.Id, users[0].Id, StringComparison.Ordinal) ||
+            !string.Equals(fullUser.Username, username, StringComparison.Ordinal))
+            throw new InvalidOperationException("Keycloak user detail did not match lookup.");
+        return fullUser;
     }
 
     /// <summary>Creates a disabled identity. Does not assign roles, credentials or enable it.</summary>
