@@ -24,7 +24,13 @@ public sealed class MasterProvisioningCoordinator(
 
         var reservation = await reservations.ReserveAsync(cancellationToken);
         if (reservation.IsActive)
-            return new MasterProvisioningResult("already-active", reservation.SubjectId);
+            throw new InvalidOperationException("Master is already active; use verified reconciliation, not preparation.");
+
+        // Check before any Keycloak mutation. A pre-existing master role assignment
+        // requires operator reconciliation rather than creating another candidate.
+        var members = await keycloak.GetMasterRoleMembersAsync(cancellationToken);
+        if (members.Count != 0)
+            throw new InvalidOperationException("Master role is already assigned; manual reconciliation required.");
 
         var marker = MasterIdentityOwnership.ComputeMarker(deploymentIdentifier);
         var existing = await keycloak.FindUserByUsernameAsync(username, cancellationToken);
@@ -45,9 +51,10 @@ public sealed class MasterProvisioningCoordinator(
             !string.Equals(markers[0], marker, StringComparison.Ordinal))
             throw new InvalidOperationException("Existing identity is not a disabled, owned bootstrap identity.");
 
-        var members = await keycloak.GetMasterRoleMembersAsync(cancellationToken);
+        // Recheck after the remote operation: role membership may have changed.
+        members = await keycloak.GetMasterRoleMembersAsync(cancellationToken);
         if (members.Count != 0)
-            throw new InvalidOperationException("Master role is already assigned; manual reconciliation required.");
+            throw new InvalidOperationException("Master role changed during preparation; manual reconciliation required.");
 
         return new MasterProvisioningResult("prepared-disabled", existing.Id);
     }
