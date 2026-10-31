@@ -48,6 +48,45 @@ public sealed class MasterProvisioningCoordinator(
         await keycloak.SetInitialPasswordAsync(user.Id, initialPassword, cancellationToken);
     }
 
+    /// <summary>
+    /// Grants the master realm role only to an owned, disabled candidate while
+    /// holding the deployment provisioning lease. Never enables the account.
+    /// </summary>
+    public async Task AssignPreparedMasterRoleAsync(
+        string username,
+        string deploymentIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentException.ThrowIfNullOrWhiteSpace(deploymentIdentifier);
+
+        await using var lease = await provisioningLock.TryAcquireAsync(cancellationToken)
+            ?? throw new InvalidOperationException("Another master provisioning operation is running.");
+
+        var reservation = await reservations.ReserveAsync(cancellationToken);
+        var candidate = await keycloak.FindUserByUsernameAsync(username, cancellationToken);
+        var members = await keycloak.GetMasterRoleMembersAsync(cancellationToken);
+        var decision = MasterRoleAssignmentPolicy.Evaluate(
+            reservation, candidate, username,
+            MasterIdentityOwnership.ComputeMarker(deploymentIdentifier), members);
+
+        if (decision == MasterRoleAssignmentDecision.Reject)
+            throw new InvalidOperationException("Master role assignment preconditions failed.");
+
+        if (decision == MasterRoleAssignmentDecision.Eligible)
+        {
+            // An ambiguous remote response must be reconciled on the next run.
+            // Never blindly retry the POST in this invocation.
+            await keycloak.AddMasterRoleMappingAsync(candidate!.Id, cancellationToken);
+        }
+
+        var after = await keycloak.GetMasterRoleMembersAsync(cancellationToken);
+        if (after.Count != 1 ||
+            !string.Equals(after[0].Id, candidate!.Id, StringComparison.Ordinal) ||
+            after[0].Enabled)
+            throw new InvalidOperationException("Master role assignment postcondition failed.");
+    }
+
     public async Task<MasterProvisioningResult> PrepareAsync(
         string username,
         string email,
