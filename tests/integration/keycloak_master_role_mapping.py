@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Container-backed Keycloak master realm-role mapping integration smoke test."""
 import json
+import http.client
+import socket
 import os
 import time
 import urllib.error
@@ -39,7 +41,8 @@ def main():
         try:
             access = token()
             break
-        except (urllib.error.URLError, TimeoutError, KeyError):
+        except (urllib.error.URLError, ConnectionError, TimeoutError, socket.timeout,
+                http.client.HTTPException):
             if attempt == 59:
                 raise
             time.sleep(2)
