@@ -1,0 +1,49 @@
+name: Keycloak master role mapping integration
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  keycloak-integration:
+    runs-on: ubuntu-latest
+    env:
+      ORYVA_TEST_KEYCLOAK_ADMIN: ci-admin
+      ORYVA_TEST_KEYCLOAK_PASSWORD: ci-only-not-production
+      ORYVA_KEYCLOAK_URL: http://127.0.0.1:8080
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start isolated Keycloak with imported ORYVA realm
+        run: |
+          docker run -d --name oryva-keycloak -p 8080:8080 \
+            -e KC_BOOTSTRAP_ADMIN_USERNAME=ci-admin \
+            -e KC_BOOTSTRAP_ADMIN_PASSWORD=ci-only-not-production \
+            -v "$PWD/infrastructure/keycloak/oryva-realm.json:/opt/keycloak/data/import/oryva-realm.json:ro" \
+            quay.io/keycloak/keycloak:26.3.5 start-dev --import-realm
+      - name: Wait for Keycloak HTTP readiness
+        run: |
+          python - <<'PY'
+          import time
+          import urllib.error
+          import urllib.request
+
+          url = "http://127.0.0.1:8080/realms/master/.well-known/openid-configuration"
+          for attempt in range(90):
+              try:
+                  with urllib.request.urlopen(url, timeout=3) as response:
+                      if response.status == 200:
+                          print("Keycloak HTTP ready")
+                          break
+              except (OSError, urllib.error.URLError):
+                  pass
+              time.sleep(2)
+          else:
+              raise SystemExit("Keycloak did not become ready within 180 seconds")
+          PY
+      - name: Run Keycloak integration test
+        run: python tests/integration/keycloak_master_role_mapping.py
+      - name: Print Keycloak diagnostics on failure
+        if: failure()
+        run: docker logs oryva-keycloak --tail 100
