@@ -46,7 +46,7 @@ await coordinator.AssignPreparedMasterRoleAsync(username, deployment); // role r
 await RejectAsync(() => coordinator.EnablePreparedMasterAsync(username, "wrong-deployment"), "wrong enablement owner");
 await coordinator.EnablePreparedMasterAsync(username, deployment);
 await coordinator.EnablePreparedMasterAsync(username, deployment); // ambiguous response reconciliation
-if (await store.GetActiveMasterSubjectAsync() is not null)
+if ((await store.ReserveAsync()).IsActive)
     throw new Exception("Enabled Keycloak identity must not imply database activation.");
 await RejectAsync(() => verifier.VerifyAndActivateAsync(username, "wrong-deployment"), "wrong activation owner");
 var active = await verifier.VerifyAndActivateAsync(username, deployment);
@@ -54,7 +54,7 @@ if (!active.IsActive || string.IsNullOrWhiteSpace(active.SubjectId))
     throw new Exception("Activation failed.");
 var repeated = await verifier.VerifyAndActivateAsync(username, deployment);
 if (repeated.SubjectId != active.SubjectId ||
-    await store.GetActiveMasterSubjectAsync() != active.SubjectId)
+    (await store.ReserveAsync()).SubjectId != active.SubjectId)
     throw new Exception("Idempotent activation or runtime binding failed.");
 await RejectAsync(() => coordinator.PrepareAsync("another-master", "other@example.invalid", deployment), "second master");
 await RejectAsync(() => coordinator.SetPreparedInitialPasswordAsync(username, deployment, password), "password reset after activation");
