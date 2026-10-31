@@ -36,6 +36,12 @@ await using (var competingLease = await provisioningLock.TryAcquireAsync()
         () => coordinator.PrepareAsync(username, "master@example.invalid", deployment),
         "concurrent coordinator blocked by advisory lease");
 }
+var authorization = new ActiveMasterAuthorization(store);
+if (await authorization.IsActiveMasterSubjectAsync("any-subject", true))
+    throw new Exception("Pending reservation must not authorize master.");
+if (await authorization.IsActiveMasterSubjectAsync("any-subject", false))
+    throw new Exception("Missing master role must deny.");
+Console.WriteLine("PASS M2 pending reservation and missing-role denial");
 await coordinator.PrepareAsync(username, "master@example.invalid", deployment);
 await coordinator.PrepareAsync(username, "master@example.invalid", deployment); // restart recovery
 await RejectAsync(() => coordinator.EnablePreparedMasterAsync(username, deployment), "missing role/password");
@@ -56,6 +62,14 @@ var repeated = await verifier.VerifyAndActivateAsync(username, deployment);
 if (repeated.SubjectId != active.SubjectId ||
     (await store.ReserveAsync()).SubjectId != active.SubjectId)
     throw new Exception("Idempotent activation or runtime binding failed.");
+if (!await authorization.IsActiveMasterSubjectAsync(active.SubjectId, true))
+    throw new Exception("Active master subject with validated role must authorize.");
+if (await authorization.IsActiveMasterSubjectAsync(active.SubjectId, false) ||
+    await authorization.IsActiveMasterSubjectAsync("different-subject", true) ||
+    await authorization.IsActiveMasterSubjectAsync(null, true) ||
+    await authorization.IsActiveMasterSubjectAsync(" ", true))
+    throw new Exception("M2 master authorization fail-closed check failed.");
+Console.WriteLine("PASS M2 active subject binding and invalid subject/role denial");
 await RejectAsync(() => coordinator.PrepareAsync("another-master", "other@example.invalid", deployment), "second master");
 await RejectAsync(() => coordinator.SetPreparedInitialPasswordAsync(username, deployment, password), "password reset after activation");
 await RejectAsync(() => coordinator.EnablePreparedMasterAsync(username, deployment), "enable after activation");
