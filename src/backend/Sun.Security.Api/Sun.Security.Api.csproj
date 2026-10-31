@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="../Sun.Security.AspNetCore/Sun.Security.AspNetCore.csproj" />
+    <ProjectReference Include="../Sun.Security.Bootstrap/Sun.Security.Bootstrap.csproj" />
+  </ItemGroup>
+</Project>
