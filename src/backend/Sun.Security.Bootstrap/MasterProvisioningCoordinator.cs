@@ -10,6 +10,65 @@ public sealed class MasterProvisioningCoordinator(
     KeycloakManagementClient keycloak)
 {
     /// <summary>
+    /// Enables the sole owned master identity after role assignment.
+    /// Holds the deployment advisory lease across Keycloak checks and mutation.
+    /// Database activation is a separate, ownership-verified reconciliation step.
+    /// </summary>
+    public async Task EnablePreparedMasterAsync(
+        string username,
+        string deploymentIdentifier,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentException.ThrowIfNullOrWhiteSpace(deploymentIdentifier);
+
+        await using var lease = await provisioningLock.TryAcquireAsync(cancellationToken)
+            ?? throw new InvalidOperationException("Another master provisioning operation is running.");
+
+        var reservation = await reservations.ReserveAsync(cancellationToken);
+        if (reservation.IsActive || reservation.SubjectId is not null)
+            throw new InvalidOperationException("Master reservation is already active or bound.");
+
+        var candidate = await keycloak.FindUserByUsernameAsync(username, cancellationToken)
+            ?? throw new InvalidOperationException("Prepared master identity is missing.");
+        var marker = MasterIdentityOwnership.ComputeMarker(deploymentIdentifier);
+        if (string.IsNullOrWhiteSpace(candidate.Id) ||
+            !string.Equals(candidate.Username, username, StringComparison.Ordinal) ||
+            candidate.Attributes is null ||
+            !candidate.Attributes.TryGetValue(MasterIdentityOwnership.AttributeName, out var values) ||
+            values is null || values.Count != 1 ||
+            !string.Equals(values[0], marker, StringComparison.Ordinal))
+            throw new InvalidOperationException("Master identity ownership verification failed.");
+
+        var members = await keycloak.GetMasterRoleMembersAsync(cancellationToken);
+        if (members.Count != 1 ||
+            !string.Equals(members[0].Id, candidate.Id, StringComparison.Ordinal))
+            throw new InvalidOperationException("Expected identity must be the sole direct master role member.");
+
+        // A previously completed PUT may have lost its response. Accept only an
+        // already-enabled, still-owned candidate with matching sole membership.
+        if (!candidate.Enabled)
+        {
+            if (members[0].Enabled)
+                throw new InvalidOperationException("Master role membership state is inconsistent.");
+            await keycloak.EnableUserAsync(candidate.Id, cancellationToken);
+        }
+
+        var after = await keycloak.FindUserByUsernameAsync(username, cancellationToken)
+            ?? throw new InvalidOperationException("Master identity disappeared during enablement.");
+        var afterMembers = await keycloak.GetMasterRoleMembersAsync(cancellationToken);
+        if (!after.Enabled || !string.Equals(after.Id, candidate.Id, StringComparison.Ordinal) ||
+            after.Attributes is null ||
+            !after.Attributes.TryGetValue(MasterIdentityOwnership.AttributeName, out var afterMarkers) ||
+            afterMarkers is null || afterMarkers.Count != 1 ||
+            !string.Equals(afterMarkers[0], marker, StringComparison.Ordinal) ||
+            afterMembers.Count != 1 ||
+            !string.Equals(afterMembers[0].Id, candidate.Id, StringComparison.Ordinal) ||
+            !afterMembers[0].Enabled)
+            throw new InvalidOperationException("Master enablement postconditions failed.");
+    }
+
+    /// <summary>
     /// Sets the initial credential only for an owned, disabled candidate while
     /// holding the deployment-wide provisioning lock. Never touches active users.
     /// </summary>
