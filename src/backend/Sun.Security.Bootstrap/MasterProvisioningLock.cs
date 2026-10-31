@@ -72,10 +72,27 @@ public sealed class MasterProvisioningLock(NpgsqlDataSource dataSource)
             if (Interlocked.Exchange(ref _disposed, 1) != 0)
                 return;
 
-            // Closing the session releases PostgreSQL session advisory locks.
-            // Clear the pool to avoid a leased lock surviving on a pooled session.
-            NpgsqlConnection.ClearPool(connection);
-            await connection.DisposeAsync();
+            // Session-level advisory locks survive ordinary transaction completion.
+            // Explicitly release the lock before returning a connection to the pool.
+            // A broken connection is discarded; never swallow an unlock failure.
+            try
+            {
+                if (connection.FullState == System.Data.ConnectionState.Open)
+                {
+                    await using var command = new NpgsqlCommand(
+                        "SELECT pg_advisory_unlock(@lock_key)", connection);
+                    command.Parameters.AddWithValue("lock_key", lockKey);
+                    var released = (bool)(await command.ExecuteScalarAsync()
+                        ?? throw new InvalidOperationException("Advisory unlock returned no result."));
+                    if (!released)
+                        throw new InvalidOperationException("Provisioning lease was not held during release.");
+                }
+            }
+            finally
+            {
+                NpgsqlConnection.ClearPool(connection);
+                await connection.DisposeAsync();
+            }
         }
     }
 }
