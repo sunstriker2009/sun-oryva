@@ -138,7 +138,9 @@ using (var tokenClient = new HttpClient())
         ["password"] = password
     });
     using var tokenResponse = await tokenClient.PostAsync(tokenUrl, tokenRequest);
-    tokenResponse.EnsureSuccessStatusCode();
+    if (!tokenResponse.IsSuccessStatusCode)
+        throw new Exception($"Keycloak test token grant failed ({(int)tokenResponse.StatusCode}): " +
+            await tokenResponse.Content.ReadAsStringAsync());
     using var tokenJson = System.Text.Json.JsonDocument.Parse(await tokenResponse.Content.ReadAsStringAsync());
     var token = tokenJson.RootElement.GetProperty("access_token").GetString()
         ?? throw new Exception("Keycloak returned no access token.");
