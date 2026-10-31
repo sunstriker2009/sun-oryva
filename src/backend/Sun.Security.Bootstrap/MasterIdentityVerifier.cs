@@ -6,11 +6,12 @@ namespace Sun.Security.Bootstrap;
 /// </summary>
 public sealed class MasterIdentityVerifier(
     MasterReservationStore reservations,
-    KeycloakManagementClient keycloak)
+    KeycloakManagementClient keycloak,
+    MasterProvisioningLock provisioningLock)
 {
     /// <summary>
     /// Verifies the deployment ownership marker and exactly one enabled master
-    /// before recording activation. The caller must coordinate external mutations.
+    /// before recording activation. Holds the deployment-wide provisioning lease.
     /// </summary>
     public async Task<MasterReservation> VerifyAndActivateAsync(
         string expectedUsername,
@@ -19,6 +20,9 @@ public sealed class MasterIdentityVerifier(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(expectedUsername);
         ArgumentException.ThrowIfNullOrWhiteSpace(deploymentIdentifier);
+
+        await using var lease = await provisioningLock.TryAcquireAsync(cancellationToken)
+            ?? throw new InvalidOperationException("Another master provisioning operation is running.");
 
         var reservation = await reservations.ReserveAsync(cancellationToken);
         var user = await keycloak.FindUserByUsernameAsync(expectedUsername, cancellationToken)
