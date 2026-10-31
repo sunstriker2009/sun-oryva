@@ -16,8 +16,7 @@ public sealed class ActiveMasterHandler(ActiveMasterAuthorization authorization)
 
         // Claim mapping must be configured only for the validated Keycloak realm.
         // Do not accept unverified role assertions or client-level roles.
-        var subject = context.User.FindFirstValue(ClaimTypes.NameIdentifier)
-            ?? context.User.FindFirstValue("sub");
+        var subject = context.User.FindFirstValue("sub");
         var isMaster = context.User.HasClaim("oryva_realm_role", "master");
         if (await authorization.IsActiveMasterSubjectAsync(subject, isMaster))
             context.Succeed(requirement);
