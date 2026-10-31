@@ -124,6 +124,69 @@ await using (var webApp = webBuilder.Build())
     Console.WriteLine("PASS M2 HTTP middleware: 401 anonymous, 403 role/subject mismatch, 200 active master");
     await webApp.StopAsync();
 }
+
+// Real Keycloak-issued JWT validation through the production bearer middleware.
+// The E2E test client is configured with an audience mapper in setup_keycloak_e2e.py.
+using (var tokenClient = new HttpClient())
+{
+    var tokenUrl = "http://127.0.0.1:8080/realms/oryva/protocol/openid-connect/token";
+    using var tokenRequest = new FormUrlEncodedContent(new Dictionary<string, string>
+    {
+        ["grant_type"] = "password",
+        ["client_id"] = "oryva-e2e-api",
+        ["username"] = username,
+        ["password"] = password
+    });
+    using var tokenResponse = await tokenClient.PostAsync(tokenUrl, tokenRequest);
+    tokenResponse.EnsureSuccessStatusCode();
+    using var tokenJson = System.Text.Json.JsonDocument.Parse(await tokenResponse.Content.ReadAsStringAsync());
+    var token = tokenJson.RootElement.GetProperty("access_token").GetString()
+        ?? throw new Exception("Keycloak returned no access token.");
+
+    // Production requires HTTPS metadata. CI's Keycloak dev container is HTTP;
+    // this E2E-only host overrides discovery transport, never production settings.
+    var jwtBuilder = Microsoft.AspNetCore.Builder.WebApplication.CreateBuilder(
+        new Microsoft.AspNetCore.Builder.WebApplicationOptions { EnvironmentName = "Development" });
+    jwtBuilder.WebHost.UseTestServer();
+    jwtBuilder.Services.AddSingleton(dataSource);
+    jwtBuilder.Services.AddScoped<MasterReservationStore>();
+    jwtBuilder.Services.AddOryvaKeycloakJwt(new OryvaJwtOptions
+    {
+        Issuer = "https://localhost/realms/oryva",
+        Audience = "oryva-api"
+    });
+    jwtBuilder.Services.PostConfigure<Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerOptions>(
+        Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme,
+        options =>
+        {
+            options.Authority = "http://127.0.0.1:8080/realms/oryva";
+            options.RequireHttpsMetadata = false;
+            options.TokenValidationParameters.ValidIssuer = "http://127.0.0.1:8080/realms/oryva";
+        });
+    jwtBuilder.Services.AddOryvaActiveMasterPolicy();
+    await using var jwtApp = jwtBuilder.Build();
+    jwtApp.UseAuthentication();
+    jwtApp.UseAuthorization();
+    jwtApp.MapGet("/test/jwt-master", () => Results.Ok())
+        .RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
+    await jwtApp.StartAsync();
+    using var jwtHttp = jwtApp.GetTestClient();
+    async Task<System.Net.HttpStatusCode> StatusAsync(string? bearer)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/test/jwt-master");
+        if (bearer is not null)
+            request.Headers.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", bearer);
+        using var response = await jwtHttp.SendAsync(request);
+        return response.StatusCode;
+    }
+    if (await StatusAsync(null) != System.Net.HttpStatusCode.Unauthorized ||
+        await StatusAsync(token + "tampered") != System.Net.HttpStatusCode.Unauthorized ||
+        await StatusAsync(token) != System.Net.HttpStatusCode.OK)
+        throw new Exception("Real Keycloak JWT HTTP authentication failed.");
+    Console.WriteLine("PASS M2 real Keycloak JWT: anonymous/tampered denied, active master allowed");
+    await jwtApp.StopAsync();
+}
 Console.WriteLine("PASS full .NET/Keycloak/PostgreSQL master bootstrap and recovery");
 
 sealed class E2EAuthenticationHandler(
