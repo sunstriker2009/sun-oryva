@@ -34,6 +34,44 @@ class ProvisioningLockTests(unittest.TestCase):
         finally:
             first.close()
 
+    @staticmethod
+    def session_holds_lock(connection):
+        high = (LOCK_KEY >> 32) & 0xFFFFFFFF
+        low = LOCK_KEY & 0xFFFFFFFF
+        return connection.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1 FROM pg_locks
+                WHERE locktype = 'advisory'
+                  AND pid = pg_backend_pid()
+                  AND granted
+                  AND classid::bigint = %s
+                  AND objid::bigint = %s
+                  AND objsubid = 1
+            )
+            """,
+            (high, low),
+        ).fetchone()[0]
+
+    def test_lock_continuity_matches_actual_session_ownership(self):
+        with psycopg.connect(DSN) as owner, psycopg.connect(DSN) as observer:
+            self.assertFalse(self.session_holds_lock(owner))
+            self.assertFalse(self.session_holds_lock(observer))
+            self.assertTrue(owner.execute("SELECT pg_try_advisory_lock(%s)", (LOCK_KEY,)).fetchone()[0])
+            self.assertTrue(self.session_holds_lock(owner))
+            self.assertFalse(self.session_holds_lock(observer))
+            owner.commit()
+            self.assertTrue(self.session_holds_lock(owner))
+            self.assertTrue(owner.execute("SELECT pg_advisory_unlock(%s)", (LOCK_KEY,)).fetchone()[0])
+            self.assertFalse(self.session_holds_lock(owner))
+
+    def test_continuity_fails_after_session_lock_is_released(self):
+        with psycopg.connect(DSN) as owner:
+            self.assertTrue(owner.execute("SELECT pg_try_advisory_lock(%s)", (LOCK_KEY,)).fetchone()[0])
+            self.assertTrue(self.session_holds_lock(owner))
+            owner.execute("SELECT pg_advisory_unlock_all()")
+            self.assertFalse(self.session_holds_lock(owner))
+
     def test_lock_is_session_scoped_not_transaction_scoped(self):
         with psycopg.connect(DSN) as first, psycopg.connect(DSN) as second:
             self.assertTrue(first.execute("SELECT pg_try_advisory_lock(%s)", (LOCK_KEY,)).fetchone()[0])
