@@ -64,7 +64,34 @@ def main():
     assert any(item["id"] == role["id"] for item in assigned)
     members = request(f"/admin/realms/{REALM}/roles/master/users", token=access)[2]
     assert len(members) == 1 and members[0]["id"] == subject and not members[0]["enabled"]
-    print("PASS: disabled Keycloak subject has exactly one direct master role mapping")
+    # Simulate the enablement transport after verifying sole direct membership.
+    user_path = f"/admin/realms/{REALM}/users/{subject}"
+    status, _, _ = request(user_path, "PUT", json.dumps({"enabled": True}).encode(), access)
+    assert status == 204
+    enabled_user = request(user_path, token=access)[2]
+    assert enabled_user["id"] == subject and enabled_user["enabled"] is True
+    enabled_members = request(f"/admin/realms/{REALM}/roles/master/users", token=access)[2]
+    assert len(enabled_members) == 1
+    assert enabled_members[0]["id"] == subject and enabled_members[0]["enabled"] is True
+
+    # Repeated enablement is idempotent at the Keycloak transport level.
+    status, _, _ = request(user_path, "PUT", json.dumps({"enabled": True}).encode(), access)
+    assert status == 204
+    repeated = request(user_path, token=access)[2]
+    assert repeated["id"] == subject and repeated["enabled"] is True
+
+    # Confirm another identity cannot be mistaken for the direct role member.
+    second_name = "oryva-nonmaster-test"
+    status, _, _ = request(f"/admin/realms/{REALM}/users", "POST",
+                           json.dumps({"username": second_name, "enabled": False}).encode(), access)
+    assert status == 201
+    other = request(f"/admin/realms/{REALM}/users?username={second_name}&exact=true",
+                    token=access)[2]
+    assert len(other) == 1 and other[0]["id"] != subject
+    other_roles = request(
+        f"/admin/realms/{REALM}/users/{other[0]['id']}/role-mappings/realm", token=access)[2]
+    assert all(item["id"] != role["id"] for item in other_roles)
+    print("PASS: Keycloak role mapping, enablement, retry and unrelated identity isolation")
 
 
 if __name__ == "__main__":
