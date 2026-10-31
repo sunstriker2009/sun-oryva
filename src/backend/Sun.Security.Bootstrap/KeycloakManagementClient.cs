@@ -189,9 +189,12 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
             ["client_id"] = options.ClientId,
             ["client_secret"] = options.ClientSecret
         });
-        using var response = await http.PostAsync(
-            new Uri(options.BaseAddress, $"realms/{Uri.EscapeDataString(options.Realm)}/protocol/openid-connect/token"),
-            body, cancellationToken);
+        using var tokenRequest = new HttpRequestMessage(HttpMethod.Post,
+            new Uri(options.BaseAddress, $"realms/{Uri.EscapeDataString(options.Realm)}/protocol/openid-connect/token"))
+        {
+            Content = body
+        };
+        using var response = await http.SendAsync(tokenRequest, cancellationToken);
         KeycloakHttpClientFactory.EnsureNoRedirect(response);
         response.EnsureSuccessStatusCode();
         var payload = await response.Content.ReadFromJsonAsync<KeycloakToken>(cancellationToken)
