@@ -121,3 +121,14 @@ status, _ = call("/admin/realms/oryva/clients", "POST",
                  json.dumps(api_client).encode(), token)
 assert status == 201
 print("PASS dedicated CI JWT client and API audience configured")
+
+
+# Test-only account profile: the bootstrap user is created without an email
+# verification ceremony. Keycloak's VERIFY_EMAIL action blocks direct grants.
+# This is an isolated CI realm, never a production configuration.
+realm_path = "/admin/realms/oryva"
+realm = call(realm_path, token=token)[1]
+realm["verifyEmail"] = False
+status, _ = call(realm_path, "PUT", json.dumps(realm).encode(), token)
+assert status == 204
+print("PASS CI realm disables email verification for isolated direct-grant test")
