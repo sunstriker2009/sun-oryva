@@ -77,7 +77,7 @@ public sealed class MasterProvisioningLock(NpgsqlDataSource dataSource)
             // A broken connection is discarded; never swallow an unlock failure.
             try
             {
-                if (connection.FullState == System.Data.ConnectionState.Open)
+                if (connection.State == System.Data.ConnectionState.Open)
                 {
                     await using var command = new NpgsqlCommand(
                         "SELECT pg_advisory_unlock(@lock_key)", connection);
