@@ -54,6 +54,37 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
         response.EnsureSuccessStatusCode();
     }
 
+    /// <summary>Creates a disabled user with deployment ownership metadata.</summary>
+    public async Task CreateDisabledOwnedUserAsync(
+        string username, string email, string ownershipMarker,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentException.ThrowIfNullOrWhiteSpace(email);
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownershipMarker);
+        options.Validate();
+        var token = await GetTokenAsync(cancellationToken);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            new Uri(options.BaseAddress, $"admin/realms/{Uri.EscapeDataString(options.Realm)}/users"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Content = JsonContent.Create(new
+        {
+            username,
+            email,
+            enabled = false,
+            emailVerified = false,
+            attributes = new Dictionary<string, string[]>
+            {
+                [MasterIdentityOwnership.AttributeName] = [ownershipMarker]
+            }
+        });
+        using var response = await http.SendAsync(request, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.Conflict)
+            throw new InvalidOperationException("Keycloak username already exists; reconcile before proceeding.");
+        response.EnsureSuccessStatusCode();
+    }
+
     /// <summary>Returns all direct members of the realm-level master role; paginated and fail-closed.</summary>
     public async Task<IReadOnlyList<KeycloakUser>> GetMasterRoleMembersAsync(
         CancellationToken cancellationToken = default)
@@ -106,4 +137,4 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
 public sealed record KeycloakUser(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("username")] string Username,
-    [property: JsonPropertyName("enabled")] bool Enabled);
+    [property: JsonPropertyName("enabled")] bool Enabled,\n    [property: JsonPropertyName("attributes")] Dictionary<string, List<string>>? Attributes = null);
