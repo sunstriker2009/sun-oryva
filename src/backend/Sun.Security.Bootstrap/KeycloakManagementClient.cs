@@ -54,6 +54,33 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
         response.EnsureSuccessStatusCode();
     }
 
+    /// <summary>Returns all direct members of the realm-level master role; paginated and fail-closed.</summary>
+    public async Task<IReadOnlyList<KeycloakUser>> GetMasterRoleMembersAsync(
+        CancellationToken cancellationToken = default)
+    {
+        options.Validate();
+        var token = await GetTokenAsync(cancellationToken);
+        var members = new List<KeycloakUser>();
+        const int pageSize = 100;
+        for (var first = 0; ; first += pageSize)
+        {
+            using var request = new HttpRequestMessage(
+                HttpMethod.Get,
+                new Uri(options.BaseAddress,
+                    $"admin/realms/{Uri.EscapeDataString(options.Realm)}/roles/master/users?first={first}&max={pageSize}"));
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            using var response = await http.SendAsync(request, cancellationToken);
+            response.EnsureSuccessStatusCode();
+            var page = await response.Content.ReadFromJsonAsync<List<KeycloakUser>>(cancellationToken)
+                ?? throw new InvalidOperationException("Invalid Keycloak role membership response.");
+            members.AddRange(page);
+            if (members.Count > 1)
+                return members; // More than one master is always invalid; avoid further requests.
+            if (page.Count < pageSize)
+                return members;
+        }
+    }
+
     private async Task<string> GetTokenAsync(CancellationToken cancellationToken)
     {
         using var body = new FormUrlEncodedContent(new Dictionary<string, string>
