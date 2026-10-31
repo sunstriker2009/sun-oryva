@@ -137,4 +137,5 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
 public sealed record KeycloakUser(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("username")] string Username,
-    [property: JsonPropertyName("enabled")] bool Enabled,\n    [property: JsonPropertyName("attributes")] Dictionary<string, List<string>>? Attributes = null);
+    [property: JsonPropertyName("enabled")] bool Enabled,
+    [property: JsonPropertyName("attributes")] Dictionary<string, List<string>>? Attributes = null);
