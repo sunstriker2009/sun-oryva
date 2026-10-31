@@ -9,14 +9,10 @@ public sealed class MasterIdentityVerifier(
     KeycloakManagementClient keycloak)
 {
     /// <summary>
-    /// Reconcile an existing master identity. Never creates users, assigns roles,
-    /// changes credentials or enables accounts.
-    /// </summary>
-    /// <summary>
     /// Verifies the deployment ownership marker and exactly one enabled master
     /// before recording activation. The caller must coordinate external mutations.
     /// </summary>
-    public async Task<MasterReservation> VerifyOwnedAndActivateAsync(
+    public async Task<MasterReservation> VerifyAndActivateAsync(
         string expectedUsername,
         string deploymentIdentifier,
         CancellationToken cancellationToken = default)
