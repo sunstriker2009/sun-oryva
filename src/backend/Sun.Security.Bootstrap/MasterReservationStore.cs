@@ -9,6 +9,21 @@ namespace Sun.Security.Bootstrap;
 /// </summary>
 public sealed class MasterReservationStore(NpgsqlDataSource dataSource)
 {
+    /// <summary>
+    /// Read-only runtime lookup. Never creates or activates a reservation.
+    /// Missing or pending state denies master authorization.
+    /// </summary>
+    public async Task<string?> GetActiveMasterSubjectAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "SELECT subject_id FROM oryva.master_bootstrap " +
+            "WHERE singleton_id = 1 AND state = 'active' AND subject_id IS NOT NULL",
+            connection);
+        return (string?)await command.ExecuteScalarAsync(cancellationToken);
+    }
+
     public async Task<MasterReservation> ReserveAsync(CancellationToken cancellationToken = default)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
