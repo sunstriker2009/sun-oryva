@@ -15,6 +15,7 @@ var databaseUrl = builder.Configuration["ORYVA_DATABASE_URL"]
 builder.Services.AddSingleton(NpgsqlDataSource.Create(databaseUrl));
 builder.Services.AddScoped<MasterReservationStore>();
 builder.Services.AddScoped<AdminProvisioningStore>();
+builder.Services.AddScoped<AdminProvisioningLock>();
 builder.Services.AddScoped<AdminProvisioningReconciler>();
 builder.Services.AddOryvaKeycloakJwt(new OryvaJwtOptions { Issuer = issuer, Audience = audience });
 builder.Services.AddOryvaActiveMasterPolicy();
@@ -81,9 +82,16 @@ if (managementConfigured)
         Guid id, AdminProvisioningReconciler reconciler,
         CancellationToken cancellationToken) =>
     {
-        var result = await reconciler.RecoverAsync(id, cancellationToken);
-        return result is null ? Results.NotFound() :
-            !result.IdentityVerified ? Results.Conflict(result) : Results.Ok(result);
+        try
+        {
+            var result = await reconciler.RecoverAsync(id, cancellationToken);
+            return result is null ? Results.NotFound() :
+                !result.IdentityVerified ? Results.Conflict(result) : Results.Ok(result);
+        }
+        catch (AdminProvisioningBusyException)
+        {
+            return Results.Conflict(new { error = "Provisioning recovery already in progress." });
+        }
     }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
 
     app.MapPost("/api/master/admins/prepare", async (
