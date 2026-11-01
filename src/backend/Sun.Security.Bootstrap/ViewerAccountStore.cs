@@ -158,6 +158,20 @@ public sealed class ViewerAccountStore(NpgsqlDataSource dataSource)
         TransitionWithAuditAsync(id, subjectId, "activation_pending", "active",
             actorSubject, actorRole, cancellationToken);
 
+    /// <summary>Durable revocation intent immediately denies viewer APIs.</summary>
+    public Task MarkDeactivationPendingAsync(
+        Guid id, string subjectId, string actorSubject, string actorRole,
+        CancellationToken cancellationToken = default) =>
+        TransitionWithAuditAsync(id, subjectId, "active", "deactivation_pending",
+            actorSubject, actorRole, cancellationToken);
+
+    /// <summary>Confirm owned Keycloak disablement and session logout.</summary>
+    public Task MarkDeactivatedAsync(
+        Guid id, string subjectId, string actorSubject, string actorRole,
+        CancellationToken cancellationToken = default) =>
+        TransitionWithAuditAsync(id, subjectId, "deactivation_pending", "deactivated",
+            actorSubject, actorRole, cancellationToken);
+
     public async Task<IReadOnlyList<ViewerProvisioningAuditEvent>> GetAuditAsync(
         Guid id, CancellationToken cancellationToken = default)
     {
