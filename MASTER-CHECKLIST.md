@@ -48,9 +48,12 @@
 - [x] Master-only, read-only reconciliation inspection ([PR #56](https://github.com/sunstriker2009/sun-oryva/pull/56)).
 - [x] Explicit fail-closed recovery of interrupted disabled candidates ([PR #57](https://github.com/sunstriker2009/sun-oryva/pull/57)).
 - [x] Cross-instance recovery serialization and contention tests ([PR #58](https://github.com/sunstriker2009/sun-oryva/pull/58), merged with green CI).
-- [ ] Durable, append-only audit of PostgreSQL provisioning transitions and master-only history endpoint (this increment; awaiting CI and merge).
-- [ ] Guarded admin role assignment and activation, including ambiguous-response reconciliation and fresh authorization checks.
-- [ ] Admin disable/revoke and viewer creation/deactivation; enforce master-only admin creation.
+- [x] Durable, append-only admin provisioning audit and master-only history endpoint ([PR #59](https://github.com/sunstriker2009/sun-oryva/pull/59)).
+- [x] Guarded admin role assignment and activation, including ambiguous-response recovery ([PR #60](https://github.com/sunstriker2009/sun-oryva/pull/60), [PR #62](https://github.com/sunstriker2009/sun-oryva/pull/62)).
+- [x] Database-backed active-admin authorization and master-only admin deactivation ([PR #63](https://github.com/sunstriker2009/sun-oryva/pull/63), [PR #64](https://github.com/sunstriker2009/sun-oryva/pull/64)).
+- [x] Database-backed viewer authorization, without granting role-only access ([PR #65](https://github.com/sunstriker2009/sun-oryva/pull/65)).
+- [ ] Guarded viewer reservation, disabled Keycloak preparation and explicit recovery (this PR; CI pending).
+- [ ] Viewer role assignment, credential enrollment, activation, deactivation, recovery and audit; enforce master/active-admin-only viewer management.
 - [ ] Password-change and account recovery policies, audit events, API error contracts, rate limits, and full lifecycle security E2E.
 - [ ] Production Keycloak permissions, operational migrations, threat review, release gates and deployment runbooks.
 
