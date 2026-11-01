@@ -64,11 +64,11 @@ jobs:
           PY
       - name: Configure restricted test service account
         run: python tests/integration/setup_keycloak_e2e.py
-      - name: Run actual .NET bootstrap against Keycloak and PostgreSQL
-        run: dotnet run --project tests/integration/Sun.Security.Bootstrap.E2E/Sun.Security.Bootstrap.E2E.csproj -c Release
-      - name: Initialize admin provisioning schema
+      - name: Initialize admin provisioning schema before authorization E2E
         run: |
           PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/002_admin_provisioning.sql
+      - name: Run actual .NET bootstrap against Keycloak and PostgreSQL
+        run: dotnet run --project tests/integration/Sun.Security.Bootstrap.E2E/Sun.Security.Bootstrap.E2E.csproj -c Release
       - name: Initialize append-only admin audit schema
         run: |
           PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/003_admin_provisioning_audit.sql
