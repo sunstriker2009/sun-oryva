@@ -47,7 +47,8 @@
 - [x] Real PostgreSQL/Keycloak E2E coverage for admin preparation, reservation collisions, and ownership ([PR #55](https://github.com/sunstriker2009/sun-oryva/pull/55)).
 - [x] Master-only, read-only reconciliation inspection ([PR #56](https://github.com/sunstriker2009/sun-oryva/pull/56)).
 - [x] Explicit fail-closed recovery of interrupted disabled candidates ([PR #57](https://github.com/sunstriker2009/sun-oryva/pull/57)).
-- [ ] Cross-instance recovery serialization and contention tests (this increment; do not mark merged until CI passes).
+- [x] Cross-instance recovery serialization and contention tests ([PR #58](https://github.com/sunstriker2009/sun-oryva/pull/58), merged with green CI).
+- [ ] Durable, append-only audit of PostgreSQL provisioning transitions and master-only history endpoint (this increment; awaiting CI and merge).
 - [ ] Guarded admin role assignment and activation, including ambiguous-response reconciliation and fresh authorization checks.
 - [ ] Admin disable/revoke and viewer creation/deactivation; enforce master-only admin creation.
 - [ ] Password-change and account recovery policies, audit events, API error contracts, rate limits, and full lifecycle security E2E.
