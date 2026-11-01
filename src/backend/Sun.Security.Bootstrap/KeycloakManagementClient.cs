@@ -76,6 +76,46 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
         response.EnsureSuccessStatusCode();
     }
 
+    /// <summary>
+    /// Retrieves an exact username and canonical user detail without requiring
+    /// the bootstrap-only ownership attribute. Caller verifies provisioning state.
+    /// </summary>
+    public async Task<KeycloakUser?> FindProvisionedUserAsync(
+        string username, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        options.Validate();
+        var token = await GetTokenAsync(cancellationToken);
+        var realm = Uri.EscapeDataString(options.Realm);
+        using var search = new HttpRequestMessage(HttpMethod.Get,
+            new Uri(options.BaseAddress,
+                $"admin/realms/{realm}/users?username={Uri.EscapeDataString(username)}&exact=true&max=2"));
+        search.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var response = await http.SendAsync(search, cancellationToken);
+        KeycloakHttpClientFactory.EnsureNoRedirect(response);
+        response.EnsureSuccessStatusCode();
+        var matches = await response.Content.ReadFromJsonAsync<List<KeycloakUser>>(cancellationToken)
+            ?? throw new InvalidOperationException("Invalid Keycloak user search.");
+        if (matches.Count == 0) return null;
+        if (matches.Count != 1 ||
+            !string.Equals(matches[0].Username, username, StringComparison.Ordinal) ||
+            string.IsNullOrWhiteSpace(matches[0].Id))
+            throw new InvalidOperationException("Ambiguous Keycloak provisioning identity.");
+        using var detail = new HttpRequestMessage(HttpMethod.Get,
+            new Uri(options.BaseAddress,
+                $"admin/realms/{realm}/users/{Uri.EscapeDataString(matches[0].Id)}"));
+        detail.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var detailResponse = await http.SendAsync(detail, cancellationToken);
+        KeycloakHttpClientFactory.EnsureNoRedirect(detailResponse);
+        detailResponse.EnsureSuccessStatusCode();
+        var user = await detailResponse.Content.ReadFromJsonAsync<KeycloakUser>(cancellationToken)
+            ?? throw new InvalidOperationException("Missing Keycloak provisioning detail.");
+        if (!string.Equals(user.Id, matches[0].Id, StringComparison.Ordinal) ||
+            !string.Equals(user.Username, username, StringComparison.Ordinal))
+            throw new InvalidOperationException("Keycloak provisioning identity changed.");
+        return user;
+    }
+
     /// <summary>Creates a disabled user with deployment ownership metadata.</summary>
     public async Task CreateDisabledOwnedUserAsync(
         string username, string email, string ownershipMarker,

@@ -93,6 +93,15 @@ if (managementConfigured)
         }
         await reservations.MarkReconciliationRequiredAsync(
             reservation.Id, cancellationToken);
+        // Read the canonical Keycloak user after creation. The subject is bound
+        // only when the identity is exact and still disabled. Ownership marker
+        // validation is a separate mandatory gate before role assignment.
+        var created = await management.FindProvisionedUserAsync(
+            input.Username, cancellationToken);
+        if (created is null || created.Enabled || string.IsNullOrWhiteSpace(created.Id))
+            throw new InvalidOperationException("Disabled Keycloak provisioning identity could not be verified.");
+        await reservations.BindVerifiedSubjectAsync(
+            reservation.Id, input.Username, input.Email, actor, created.Id, cancellationToken);
         return Results.Accepted(value: new
         {
             provisioningId = reservation.Id,

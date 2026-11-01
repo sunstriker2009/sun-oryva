@@ -20,3 +20,7 @@ Apply `infrastructure/postgres/002_admin_provisioning.sql` through the deploymen
 The current Keycloak adapter creates a disabled account **without** an ownership marker or verified subject ID. Accordingly the reservation is deliberately marked `reconciliation_required` even after successful creation; it cannot be treated as proof of Keycloak ownership. A later coordinator must write a Keycloak ownership marker, retrieve and verify the subject, and transition to `prepared` before any role assignment.
 
 The API currently propagates errors on duplicate reservation and Keycloak failures; improve these to stable problem responses in a later increment. No admin role assignment or activation is exposed.
+
+## Canonical subject binding increment
+
+After creating a disabled user, the API fetches the exact username from Keycloak, rereads its canonical user representation, confirms the same subject and disabled state, and binds that subject to the original PostgreSQL reservation. The reservation remains `reconciliation_required`: subject binding is **not** proof of ownership or authorization to promote. Next, introduce a dedicated provisioning ownership marker (separate from the sole-master bootstrap marker), verify it along with email and role state, and add integration tests before any role assignment or enablement.
