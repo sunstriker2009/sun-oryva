@@ -76,6 +76,17 @@ if (managementConfigured)
         return result is null ? Results.NotFound() : Results.Ok(result);
     }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
 
+    // Audit access is master-only; no credentials or Keycloak payloads are stored.
+    app.MapGet("/api/master/admins/provisioning/{id:guid}/events", async (
+        Guid id, AdminProvisioningStore reservations,
+        CancellationToken cancellationToken) =>
+    {
+        if (await reservations.GetAsync(id, cancellationToken) is null)
+            return Results.NotFound();
+        var events = await reservations.GetAuditAsync(id, cancellationToken);
+        return Results.Ok(new { provisioningId = id, events });
+    }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
+
     // Explicit recovery is restricted to the active master. It does not
     // mutate Keycloak or grant privileges.
     app.MapPost("/api/master/admins/provisioning/{id:guid}/recover", async (
