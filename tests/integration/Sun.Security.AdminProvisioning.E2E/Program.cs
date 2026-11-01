@@ -609,6 +609,54 @@ if (!viewerEvents.Select(x => x.EventType)
     throw new Exception("Viewer role audit must be ordered and actor-bound.");
 Console.WriteLine("PASS viewer role assignment, advisory contention, idempotence, disabled state and audit");
 
+// Readiness is read-only: never enable a viewer from this preflight.
+var viewerReadiness = new ViewerActivationReadiness(viewerStore, keycloak, viewerLock);
+if (await viewerReadiness.CheckAsync(Guid.NewGuid()) is not null)
+    throw new Exception("Unknown viewer readiness reservation must not be adopted.");
+var viewerBeforeEnrollment = await viewerReadiness.CheckAsync(viewerReservation.Id);
+if (viewerBeforeEnrollment?.Ready != false ||
+    viewerBeforeEnrollment.Finding != "password_missing" ||
+    await viewerStore.IsActiveViewerSubjectAsync(viewerKeycloak.Id))
+    throw new Exception("Uncredentialed viewer incorrectly passed readiness.");
+Console.WriteLine("PASS uncredentialed viewer fails real Keycloak activation preflight");
+
+await using (var held = await viewerLock.TryAcquireAsync(viewerReservation.Id)
+    ?? throw new Exception("Could not hold viewer activation preflight lease."))
+{
+    var blocked = false;
+    try { await viewerReadiness.CheckAsync(viewerReservation.Id); }
+    catch (ViewerProvisioningBusyException) { blocked = true; }
+    if (!blocked)
+        throw new Exception("Viewer readiness raced an in-progress provisioning writer.");
+}
+Console.WriteLine("PASS viewer activation preflight respects cross-instance advisory lease");
+
+var reservedViewerName = "viewer-not-assigned-" + Guid.NewGuid().ToString("N")[..12];
+var reservedViewer = await viewerStore.ReserveAsync(
+    reservedViewerName, reservedViewerName + "@example.invalid", actor, "master");
+var notAssigned = await viewerReadiness.CheckAsync(reservedViewer.Id);
+if (notAssigned?.Ready != false || notAssigned.Finding != "role_not_assigned")
+    throw new Exception("Reserved viewer must not pass readiness.");
+
+// Test-only credential and email fixture. No production endpoint may do this,
+// and no viewer is enabled by the readiness operation.
+await keycloak.SetInitialPasswordAsync(viewerKeycloak.Id, "CI-Only-Viewer-Readiness-2026!");
+var unverifiedViewer = await viewerReadiness.CheckAsync(viewerReservation.Id);
+if (unverifiedViewer?.Ready != false ||
+    unverifiedViewer.Finding != "email_not_verified")
+    throw new Exception("Unverified viewer email incorrectly passed readiness.");
+await VerifyTestEmailAsync(
+    viewerKeycloak.Id, viewerName, viewerEmail, viewerReservation.Id);
+var enrolledViewer = await viewerReadiness.CheckAsync(viewerReservation.Id);
+if (enrolledViewer?.Ready != true ||
+    enrolledViewer.Finding != "ready_for_guarded_activation" ||
+    (await viewerStore.GetAsync(viewerReservation.Id))?.State != "role_assigned" ||
+    (await keycloak.FindProvisionedUserAsync(viewerName))?.Enabled != false ||
+    await viewerStore.IsActiveViewerSubjectAsync(viewerKeycloak.Id))
+    throw new Exception("Verified viewer preflight must remain disabled and non-authorizing.");
+Console.WriteLine("PASS real credentialed, email-verified viewer is ready but remains disabled and unauthorized");
+
+
 await using (var auditConnection = await source.OpenConnectionAsync())
 await using (var mutation = new NpgsqlCommand(
     "UPDATE oryva.viewer_provisioning_audit SET actor_role = 'admin' WHERE provisioning_id = @id",
