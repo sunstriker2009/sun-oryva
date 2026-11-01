@@ -77,12 +77,21 @@ The coordinator holds the same cross-instance PostgreSQL advisory lease as recov
 
 **External-writer limitation:** the PostgreSQL lease coordinates ORYVA writers, not independent Keycloak administrators. An external change between validation and the Keycloak role mutation cannot be fenced by this mechanism. Production deployment should restrict direct Keycloak management permissions and monitor drift. Any later activation must independently verify identity, password/invitation state, exclusive roles and active-master authorization immediately before enablement. A role-assigned identity is **not** an active admin.
 
+## Admin activation readiness preflight (M4)
+
+The active-master-only `GET /api/master/admins/provisioning/{id}/activation-readiness` performs a **read-only** point-in-time assessment. It requires configured Keycloak management credentials, holds the reservation's PostgreSQL advisory lease while reading, and returns `{ provisioningId, state, ready, finding }`. Unknown IDs return 404 and concurrent provisioning operations return 409. The preflight does **not** enable users, set credentials, send email, or grant roles.
+
+A candidate can be ready only when PostgreSQL says `role_assigned` and the canonical Keycloak user remains **disabled**, has the exact bound subject, username, case-insensitive email and single ownership marker, has only the direct and effective `admin` ORYVA realm role, has a password credential, has `emailVerified=true`, and has an explicitly present **empty** `requiredActions` collection. Missing metadata is treated as not ready. Readiness reasons include `role_not_assigned`, `identity_mismatch`, `role_mismatch`, `password_missing`, `email_not_verified`, and `required_actions_pending`.
+
+**Security boundary:** A readiness response is not a reusable approval or capability token. A future activation coordinator must reacquire the lease, revalidate every condition immediately before the Keycloak enable operation, persist durable intent and audit, and reconcile ambiguous responses. Secure invitation and self-service credential enrollment are still outstanding. Do not enable a user solely because a previous readiness check returned true.
+
 ### Remaining backend v1 checklist
 
 - [x] Sole-master bootstrap and end-to-end validation
 - [x] Disabled admin preparation, ownership binding and explicit recovery
 - [x] PostgreSQL advisory locking and append-only provisioning audit
 - [x] Guarded admin role assignment to a disabled, uncredentialed candidate
+- [x] Read-only, fail-closed admin activation readiness preflight
 - [ ] Secure invitation/credential enrollment and guarded activation
 - [ ] Master-only admin create/deactivate lifecycle and safe revocation
 - [ ] Admin-managed viewer lifecycle, with master override
