@@ -97,24 +97,24 @@ public sealed class ViewerAccountStore(NpgsqlDataSource dataSource)
     public Task MarkRoleAssignmentPendingAsync(
         Guid id, string subjectId, string actorSubject, string actorRole,
         CancellationToken cancellationToken = default) =>
-        TransitionRoleAsync(id, subjectId, "prepared", "role_assignment_pending",
+        TransitionWithAuditAsync(id, subjectId, "prepared", "role_assignment_pending",
             actorSubject, actorRole, cancellationToken);
 
     /// <summary>Commit the verified disabled viewer role and append its audit event.</summary>
     public Task MarkRoleAssignedAsync(
         Guid id, string subjectId, string actorSubject, string actorRole,
         CancellationToken cancellationToken = default) =>
-        TransitionRoleAsync(id, subjectId, "role_assignment_pending", "role_assigned",
+        TransitionWithAuditAsync(id, subjectId, "role_assignment_pending", "role_assigned",
             actorSubject, actorRole, cancellationToken);
 
-    private async Task TransitionRoleAsync(
+    private async Task TransitionWithAuditAsync(
         Guid id, string subjectId, string expectedState, string nextState,
         string actorSubject, string actorRole, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(subjectId);
         ArgumentException.ThrowIfNullOrWhiteSpace(actorSubject);
         if (actorRole is not ("master" or "admin"))
-            throw new ArgumentException("Only active master or admin can assign viewer roles.", nameof(actorRole));
+            throw new ArgumentException("Only active master or admin can transition viewer provisioning.", nameof(actorRole));
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
             WITH changed AS (
@@ -137,6 +137,26 @@ public sealed class ViewerAccountStore(NpgsqlDataSource dataSource)
         if (await command.ExecuteScalarAsync(cancellationToken) is null)
             throw new InvalidOperationException("Viewer role assignment transition denied.");
     }
+
+    /// <summary>
+    /// Commit activation intent and actor audit before any Keycloak enablement.
+    /// The pending state must never authorize viewer endpoints.
+    /// </summary>
+    public Task MarkActivationPendingAsync(
+        Guid id, string subjectId, string actorSubject, string actorRole,
+        CancellationToken cancellationToken = default) =>
+        TransitionWithAuditAsync(id, subjectId, "role_assigned", "activation_pending",
+            actorSubject, actorRole, cancellationToken);
+
+    /// <summary>
+    /// Commit active state only after observing an enabled, owned and fully
+    /// verified Keycloak viewer. The conditional transition is atomic with audit.
+    /// </summary>
+    public Task MarkActivatedAsync(
+        Guid id, string subjectId, string actorSubject, string actorRole,
+        CancellationToken cancellationToken = default) =>
+        TransitionWithAuditAsync(id, subjectId, "activation_pending", "active",
+            actorSubject, actorRole, cancellationToken);
 
     public async Task<IReadOnlyList<ViewerProvisioningAuditEvent>> GetAuditAsync(
         Guid id, CancellationToken cancellationToken = default)
