@@ -73,6 +73,12 @@ app.MapGet("/api/admin/session", (System.Security.Claims.ClaimsPrincipal princip
     Results.Ok(new { subject = principal.FindFirst("sub")?.Value, role = "admin" }))
     .RequireAuthorization(OryvaRolePolicyExtensions.Admin);
 
+// Read-only viewer boundary: an exclusive Keycloak viewer role requires an
+// active PostgreSQL viewer record. Active admins inherit read-only access.
+app.MapGet("/api/viewer/session", (System.Security.Claims.ClaimsPrincipal principal) =>
+    Results.Ok(new { subject = principal.FindFirst("sub")?.Value, access = "viewer" }))
+    .RequireAuthorization(OryvaRolePolicyExtensions.Viewer);
+
 // Administrative provisioning endpoints are guarded by the active-master policy.
 // Invitations and self-service enrollment remain separate future operations.
 if (managementConfigured)

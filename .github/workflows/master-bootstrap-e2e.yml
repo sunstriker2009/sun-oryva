@@ -67,8 +67,6 @@ jobs:
       - name: Initialize admin provisioning schema before authorization E2E
         run: |
           PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/002_admin_provisioning.sql
-      - name: Run actual .NET bootstrap against Keycloak and PostgreSQL
-        run: dotnet run --project tests/integration/Sun.Security.Bootstrap.E2E/Sun.Security.Bootstrap.E2E.csproj -c Release
       - name: Initialize append-only admin audit schema
         run: |
           PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/003_admin_provisioning_audit.sql
@@ -81,6 +79,13 @@ jobs:
       - name: Initialize admin deactivation schema
         run: |
           PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/006_admin_deactivation.sql
+      - name: Initialize viewer authorization schema
+        run: |
+          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/007_viewer_authorization.sql
+      - name: Run actual .NET bootstrap against Keycloak and PostgreSQL
+        run: dotnet run --project tests/integration/Sun.Security.Bootstrap.E2E/Sun.Security.Bootstrap.E2E.csproj -c Release
+      - name: Run viewer authorization PostgreSQL and HTTP E2E
+        run: dotnet run --project tests/integration/Sun.Security.ViewerAuthorization.E2E/Sun.Security.ViewerAuthorization.E2E.csproj -c Release
       - name: Run admin provisioning PostgreSQL and Keycloak E2E
         run: dotnet run --project tests/integration/Sun.Security.AdminProvisioning.E2E/Sun.Security.AdminProvisioning.E2E.csproj -c Release
       - name: Keycloak logs on failure

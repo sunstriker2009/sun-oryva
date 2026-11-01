@@ -438,7 +438,7 @@ await using (var webApp = webBuilder.Build())
     await CheckAsync("/test/admin", "unknown-subject", "admin", System.Net.HttpStatusCode.Forbidden);
     await CheckAsync("/test/admin", activateUser.Id, "admin", System.Net.HttpStatusCode.OK);
     await CheckAsync("/test/viewer", activateUser.Id, "admin", System.Net.HttpStatusCode.OK);
-    await CheckAsync("/test/viewer", assignedUser.Id, "viewer", System.Net.HttpStatusCode.OK);
+    await CheckAsync("/test/viewer", assignedUser.Id, "viewer", System.Net.HttpStatusCode.Forbidden);
     await CheckAsync("/test/viewer", activateUser.Id, "master", System.Net.HttpStatusCode.Forbidden);
     await CheckAsync("/test/admin", activateUser.Id, "admin,viewer", System.Net.HttpStatusCode.Forbidden);
     Console.WriteLine("PASS HTTP admin/viewer policies enforce active DB state, exclusive role, 401/403/200");
