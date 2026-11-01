@@ -59,7 +59,7 @@ public sealed class AdminProvisioningReconciler(
     {
         var state = await reservations.GetAsync(reservationId, cancellationToken);
         if (state is null) return null;
-        if (state.State is not ("reserved" or "reconciliation_required" or "prepared"))
+        if (state.State is not ("reserved" or "reconciliation_required" or "prepared" or "role_assignment_pending" or "role_assigned"))
             throw new InvalidOperationException("Unknown admin provisioning state.");
         var user = await keycloak.FindProvisionedUserAsync(state.Username, cancellationToken);
         if (user is null)
@@ -76,9 +76,24 @@ public sealed class AdminProvisioningReconciler(
              !string.Equals(state.KeycloakSubjectId, user.Id, StringComparison.Ordinal)))
             return new AdminProvisioningInspection(reservationId, state.State,
                 "identity_mismatch", false);
+        if ((state.State is "role_assignment_pending" or "role_assigned") &&
+            await keycloak.HasPasswordCredentialAsync(user.Id, cancellationToken))
+            return new AdminProvisioningInspection(reservationId, state.State,
+                "unexpected_credential", false);
         var direct = await keycloak.GetDirectOryvaRolesAsync(user.Id, cancellationToken);
         var effective = await keycloak.GetEffectiveOryvaRolesAsync(user.Id, cancellationToken);
-        if (direct.Count != 0 || effective.Count != 0)
+        var noRole = direct.Count == 0 && effective.Count == 0;
+        var onlyAdmin = direct.Count == 1 && direct[0] == "admin" &&
+                        effective.Count == 1 && effective[0] == "admin";
+        if (state.State == "role_assigned")
+            return new AdminProvisioningInspection(reservationId, state.State,
+                onlyAdmin ? "verified_disabled_admin" : "unexpected_role", onlyAdmin);
+        if (state.State == "role_assignment_pending")
+            return new AdminProvisioningInspection(reservationId, state.State,
+                onlyAdmin ? "admin_role_present" :
+                noRole ? "admin_role_not_yet_present" : "unexpected_role",
+                onlyAdmin || noRole);
+        if (!noRole)
             return new AdminProvisioningInspection(reservationId, state.State,
                 "unexpected_role", false);
         return new AdminProvisioningInspection(reservationId, state.State,

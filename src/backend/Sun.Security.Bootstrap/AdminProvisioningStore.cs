@@ -175,6 +175,60 @@ public sealed class AdminProvisioningStore(NpgsqlDataSource dataSource)
             throw new InvalidOperationException("Admin provisioning prepared transition denied.");
     }
 
+    /// <summary>
+    /// Commit the recovery marker before sending the external Keycloak role mutation.
+    /// The original actor is retained in the append-only audit.
+    /// </summary>
+    public async Task MarkRoleAssignmentPendingAsync(
+        Guid id, string subjectId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(subjectId);
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            WITH changed AS (
+                UPDATE oryva.admin_provisioning
+                SET state = 'role_assignment_pending', updated_at = now()
+                WHERE id = @id AND keycloak_subject_id = @subject AND state = 'prepared'
+                RETURNING id, requested_by_subject
+            )
+            INSERT INTO oryva.admin_provisioning_audit
+                (provisioning_id, event_type, actor_subject)
+            SELECT id, 'role_assignment_pending', requested_by_subject FROM changed
+            RETURNING provisioning_id;
+            """, connection);
+        command.Parameters.AddWithValue("id", id);
+        command.Parameters.AddWithValue("subject", subjectId);
+        if (await command.ExecuteScalarAsync(cancellationToken) is null)
+            throw new InvalidOperationException("Admin role assignment transition denied.");
+    }
+
+    /// <summary>
+    /// Record a verified disabled Keycloak admin role mapping, never activation.
+    /// </summary>
+    public async Task MarkRoleAssignedAsync(
+        Guid id, string subjectId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(subjectId);
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            WITH changed AS (
+                UPDATE oryva.admin_provisioning
+                SET state = 'role_assigned', updated_at = now()
+                WHERE id = @id AND keycloak_subject_id = @subject
+                  AND state = 'role_assignment_pending'
+                RETURNING id, requested_by_subject
+            )
+            INSERT INTO oryva.admin_provisioning_audit
+                (provisioning_id, event_type, actor_subject)
+            SELECT id, 'role_assigned', requested_by_subject FROM changed
+            RETURNING provisioning_id;
+            """, connection);
+        command.Parameters.AddWithValue("id", id);
+        command.Parameters.AddWithValue("subject", subjectId);
+        if (await command.ExecuteScalarAsync(cancellationToken) is null)
+            throw new InvalidOperationException("Verified admin role mapping transition denied.");
+    }
+
     public async Task MarkReconciliationRequiredAsync(
         Guid id, CancellationToken cancellationToken = default)
     {
