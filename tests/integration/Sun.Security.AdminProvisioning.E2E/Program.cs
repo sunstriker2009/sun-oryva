@@ -72,3 +72,16 @@ if (!await reader.ReadAsync() || reader.GetString(0) != "prepared" ||
     reader.GetString(1) != user.Id)
     throw new Exception("Prepared reservation not persisted correctly.");
 Console.WriteLine("PASS prepared state bound to verified Keycloak subject");
+
+var reconciler = new AdminProvisioningReconciler(store, keycloak);
+var inspected = await reconciler.InspectAsync(reservation.Id);
+if (inspected is null || !inspected.IdentityVerified ||
+    inspected.State != "prepared" ||
+    inspected.Finding != "verified_disabled_candidate")
+    throw new Exception("Prepared candidate inspection failed.");
+Console.WriteLine("PASS read-only reconciliation verifies prepared candidate");
+
+var missing = await reconciler.InspectAsync(Guid.NewGuid());
+if (missing is not null)
+    throw new Exception("Unknown provisioning reservation must not be adopted.");
+Console.WriteLine("PASS unknown provisioning reservation is not adopted");

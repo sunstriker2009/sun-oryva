@@ -36,6 +36,28 @@ public sealed class AdminProvisioningStore(NpgsqlDataSource dataSource)
     }
 
     /// <summary>
+    /// Reads a reservation by opaque identifier. Caller must enforce active-master
+    /// authorization; this read alone never permits account activation.
+    /// </summary>
+    public async Task<AdminProvisioningState?> GetAsync(
+        Guid id, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            SELECT id, username, email, requested_by_subject,
+                   keycloak_subject_id, state
+            FROM oryva.admin_provisioning WHERE id = @id;
+            """, connection);
+        command.Parameters.AddWithValue("id", id);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken)) return null;
+        return new AdminProvisioningState(
+            reader.GetGuid(0), reader.GetString(1), reader.GetString(2),
+            reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4),
+            reader.GetString(5));
+    }
+
+    /// <summary>
     /// Binds the verified Keycloak subject to the original reservation.
     /// Does not mark the account prepared until ownership markers are supported.
     /// </summary>
@@ -100,3 +122,7 @@ public sealed class AdminProvisioningStore(NpgsqlDataSource dataSource)
 
 public sealed record AdminProvisioningReservation(
     Guid Id, string Username, string Email, string RequestedBySubject);
+
+public sealed record AdminProvisioningState(
+    Guid Id, string Username, string Email, string RequestedBySubject,
+    string? KeycloakSubjectId, string State);
