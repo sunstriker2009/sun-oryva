@@ -56,7 +56,8 @@
 - [x] Guarded viewer realm-role assignment, disabled-state verification, cross-instance lock and durable audit ([PR #67](https://github.com/sunstriker2009/sun-oryva/pull/67), CI verified).
 - [x] Read-only, lease-serialized viewer activation readiness with strict ownership, exclusive role, password, email and required-action gates ([PR #68](https://github.com/sunstriker2009/sun-oryva/pull/68), E2E verified).
 - [x] Guarded viewer activation with durable intent, Keycloak reconciliation, actor audit and real E2E ([PR #69](https://github.com/sunstriker2009/sun-oryva/pull/69), six PR checks verified before merge).
-- [ ] Viewer credential enrollment, database-first deactivation and recovery; enforce master/active-admin-only viewer management.
+- [ ] Database-first viewer deactivation and session revocation with durable recovery and audit (PR #70, awaiting CI/merge verification).
+- [ ] Secure viewer credential enrollment and invitations; full lifecycle and operational recovery tooling.
 - [ ] Password-change and account recovery policies, audit events, API error contracts, rate limits, and full lifecycle security E2E.
 - [ ] Production Keycloak permissions, operational migrations, threat review, release gates and deployment runbooks.
 
