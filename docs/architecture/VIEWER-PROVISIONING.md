@@ -32,10 +32,13 @@ Only then can the SQL row move from `reserved` to `prepared`, bound to the
 verified Keycloak subject. `prepared` is **not active**; viewer API access
 requires a separate `active` row and exclusive validated viewer realm role.
 
-A lost or ambiguous Keycloak response returns HTTP 409 with the durable\n\`provisioningId\` and leaves the reservation intact. Recovery
+A lost or ambiguous Keycloak response returns HTTP 409 with the durable
+`provisioningId` and leaves the reservation intact. Recovery
 does **not** create a user or adopt an unmarked user; missing or mismatched
 identities are rejected. Concurrent prepared transitions are guarded by
-conditional SQL. The reservation ID is returned in the conflict response when the request\nremains connected; otherwise privileged database inspection can locate it.\nA future operational lookup API should improve this recovery experience.
+conditional SQL. The reservation ID is returned in the conflict response when the request
+remains connected; otherwise privileged database inspection can locate it.
+A future operational lookup API should improve this recovery experience.
 
 ## Explicitly out of scope
 
@@ -43,7 +46,7 @@ No viewer realm role assignment, credential enrollment, email verification,
 activation, revocation, invitation or production account enablement is added.
 Before production, implement cross-instance locks for privileged transitions,
 durable audit events, stable error contracts for external Keycloak failures,
-rate limiting, operational recovery, and HTTP authorization/security E2E tests.
+rate limiting and operational recovery. HTTP authorization E2E covers the active-admin and role-conflict branches; active-master management E2E remains outstanding.
 
 The real Keycloak/PostgreSQL E2E suite verifies reservation contention,
 case-insensitive duplicate rejection, canonical disabled identity, no roles or
