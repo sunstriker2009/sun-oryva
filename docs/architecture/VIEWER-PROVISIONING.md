@@ -32,12 +32,10 @@ Only then can the SQL row move from `reserved` to `prepared`, bound to the
 verified Keycloak subject. `prepared` is **not active**; viewer API access
 requires a separate `active` row and exclusive validated viewer realm role.
 
-A lost or ambiguous Keycloak response leaves the reservation intact. Recovery
+A lost or ambiguous Keycloak response returns HTTP 409 with the durable\n\`provisioningId\` and leaves the reservation intact. Recovery
 does **not** create a user or adopt an unmarked user; missing or mismatched
 identities are rejected. Concurrent prepared transitions are guarded by
-conditional SQL. The reservation ID can be found through privileged database
-operations if the original request failed before returning it; a future
-operational lookup API should improve this recovery experience.
+conditional SQL. The reservation ID is returned in the conflict response when the request\nremains connected; otherwise privileged database inspection can locate it.\nA future operational lookup API should improve this recovery experience.
 
 ## Explicitly out of scope
 
