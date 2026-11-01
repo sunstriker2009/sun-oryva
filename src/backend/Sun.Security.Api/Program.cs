@@ -15,6 +15,7 @@ var databaseUrl = builder.Configuration["ORYVA_DATABASE_URL"]
 builder.Services.AddSingleton(NpgsqlDataSource.Create(databaseUrl));
 builder.Services.AddScoped<MasterReservationStore>();
 builder.Services.AddScoped<AdminProvisioningStore>();
+builder.Services.AddScoped<AdminProvisioningReconciler>();
 builder.Services.AddOryvaKeycloakJwt(new OryvaJwtOptions { Issuer = issuer, Audience = audience });
 builder.Services.AddOryvaActiveMasterPolicy();
 builder.Services.AddOryvaRolePolicies();
@@ -65,6 +66,15 @@ app.MapGet("/api/master/session", (System.Security.Claims.ClaimsPrincipal princi
 // invitations and idempotent reconciliation are separate future operations.
 if (managementConfigured)
 {
+    // Read-only recovery inspection: no Keycloak mutations or implicit adoption.
+    app.MapGet("/api/master/admins/provisioning/{id:guid}", async (
+        Guid id, AdminProvisioningReconciler reconciler,
+        CancellationToken cancellationToken) =>
+    {
+        var result = await reconciler.InspectAsync(id, cancellationToken);
+        return result is null ? Results.NotFound() : Results.Ok(result);
+    }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
+
     app.MapPost("/api/master/admins/prepare", async (
         PrepareAdminRequest input, KeycloakManagementClient management,
         AdminProvisioningStore reservations, System.Security.Claims.ClaimsPrincipal principal,
