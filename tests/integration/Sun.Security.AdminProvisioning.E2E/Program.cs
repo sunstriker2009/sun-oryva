@@ -407,9 +407,11 @@ var webBuilder = WebApplication.CreateBuilder(
 webBuilder.WebHost.UseTestServer();
 webBuilder.Services.AddSingleton(source);
 webBuilder.Services.AddScoped<AdminProvisioningStore>();
+webBuilder.Services.AddScoped<MasterReservationStore>();
 webBuilder.Services.AddAuthentication("E2EAdmin")
     .AddScheme<AuthenticationSchemeOptions, E2EAdminAuthHandler>("E2EAdmin", _ => { });
 webBuilder.Services.AddOryvaRolePolicies();
+webBuilder.Services.AddOryvaActiveMasterPolicy();
 await using (var webApp = webBuilder.Build())
 {
     webApp.UseAuthentication();
@@ -418,6 +420,14 @@ await using (var webApp = webBuilder.Build())
         .RequireAuthorization(OryvaRolePolicyExtensions.Admin);
     webApp.MapGet("/test/viewer", () => Microsoft.AspNetCore.Http.Results.Ok())
         .RequireAuthorization(OryvaRolePolicyExtensions.Viewer);
+    webApp.MapGet("/test/manage-viewer", async (
+        Microsoft.AspNetCore.Authorization.IAuthorizationService authorization,
+        ClaimsPrincipal principal) =>
+    {
+        var role = await ViewerManagerAuthorization.GetActorRoleAsync(authorization, principal);
+        return role is null ? Microsoft.AspNetCore.Http.Results.Forbid() :
+            Microsoft.AspNetCore.Http.Results.Ok();
+    }).RequireAuthorization();
     await webApp.StartAsync();
     using var client = webApp.GetTestClient();
     async Task CheckAsync(string route, string? subject, string? role,
@@ -441,6 +451,13 @@ await using (var webApp = webBuilder.Build())
     await CheckAsync("/test/viewer", assignedUser.Id, "viewer", System.Net.HttpStatusCode.Forbidden);
     await CheckAsync("/test/viewer", activateUser.Id, "master", System.Net.HttpStatusCode.Forbidden);
     await CheckAsync("/test/admin", activateUser.Id, "admin,viewer", System.Net.HttpStatusCode.Forbidden);
+    await CheckAsync("/test/manage-viewer", null, null, System.Net.HttpStatusCode.Unauthorized);
+    await CheckAsync("/test/manage-viewer", activateUser.Id, "admin", System.Net.HttpStatusCode.OK);
+    await CheckAsync("/test/manage-viewer", assignedUser.Id, "admin", System.Net.HttpStatusCode.Forbidden);
+    await CheckAsync("/test/manage-viewer", activateUser.Id, "viewer", System.Net.HttpStatusCode.Forbidden);
+    await CheckAsync("/test/manage-viewer", activateUser.Id, "admin,viewer", System.Net.HttpStatusCode.Forbidden);
+    await CheckAsync("/test/manage-viewer", activateUser.Id, "master,admin", System.Net.HttpStatusCode.Forbidden);
+    Console.WriteLine("PASS viewer manager HTTP gate requires active admin and exclusive role");
     Console.WriteLine("PASS HTTP admin/viewer policies enforce active DB state, exclusive role, 401/403/200");
     await webApp.StopAsync();
 }
