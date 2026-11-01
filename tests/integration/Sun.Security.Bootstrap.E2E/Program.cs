@@ -262,6 +262,70 @@ using (var tokenClient = new HttpClient())
         await StatusAsync(token) != System.Net.HttpStatusCode.OK)
         throw new Exception("Real Keycloak JWT HTTP authentication failed.");
     Console.WriteLine("PASS M2 real Keycloak JWT: anonymous/tampered denied, active master allowed");
+
+    // CI-only: create a signed JWT with conflicting master/admin realm roles.
+    using (var managementHttp = new HttpClient())
+    {
+        using var grant = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["grant_type"] = "client_credentials",
+            ["client_id"] = "oryva-e2e-bootstrap",
+            ["client_secret"] = secret
+        });
+        using var grantResponse = await managementHttp.PostAsync(tokenUrl, grant);
+        grantResponse.EnsureSuccessStatusCode();
+        using var grantJson = System.Text.Json.JsonDocument.Parse(
+            await grantResponse.Content.ReadAsStringAsync());
+        var managementToken = grantJson.RootElement.GetProperty("access_token").GetString();
+        var roleUrl = "http://127.0.0.1:8080/admin/realms/oryva/roles/admin";
+        using var roleRequest = new HttpRequestMessage(HttpMethod.Get, roleUrl);
+        roleRequest.Headers.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", managementToken);
+        using var roleResponse = await managementHttp.SendAsync(roleRequest);
+        roleResponse.EnsureSuccessStatusCode();
+        var rolePayload = await roleResponse.Content.ReadAsStringAsync();
+        var mappingUrl = "http://127.0.0.1:8080/admin/realms/oryva/users/" +
+            Uri.EscapeDataString(active.SubjectId) + "/role-mappings/realm";
+        using (var assign = new HttpRequestMessage(HttpMethod.Post, mappingUrl))
+        {
+            assign.Headers.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", managementToken);
+            assign.Content = new StringContent("[" + rolePayload + "]",
+                System.Text.Encoding.UTF8, "application/json");
+            using var assigned = await managementHttp.SendAsync(assign);
+            assigned.EnsureSuccessStatusCode();
+        }
+        try
+        {
+            using var conflictingGrant = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["grant_type"] = "password",
+                ["client_id"] = "oryva-e2e-api",
+                ["username"] = username,
+                ["password"] = password
+            });
+            using var conflictingResponse = await tokenClient.PostAsync(tokenUrl, conflictingGrant);
+            conflictingResponse.EnsureSuccessStatusCode();
+            using var conflictingJson = System.Text.Json.JsonDocument.Parse(
+                await conflictingResponse.Content.ReadAsStringAsync());
+            var conflictingToken =
+                conflictingJson.RootElement.GetProperty("access_token").GetString();
+            if (await StatusAsync(conflictingToken) != System.Net.HttpStatusCode.Unauthorized)
+                throw new Exception("Signed master+admin Keycloak JWT must be rejected.");
+            Console.WriteLine("PASS M3 real Keycloak JWT rejects conflicting master+admin roles");
+        }
+        finally
+        {
+            using var remove = new HttpRequestMessage(HttpMethod.Delete, mappingUrl);
+            remove.Headers.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", managementToken);
+            remove.Content = new StringContent("[" + rolePayload + "]",
+                System.Text.Encoding.UTF8, "application/json");
+            using var removed = await managementHttp.SendAsync(remove);
+            removed.EnsureSuccessStatusCode();
+        }
+    }
+
     await jwtApp.StopAsync();
 }
 Console.WriteLine("PASS full .NET/Keycloak/PostgreSQL master bootstrap and recovery");
