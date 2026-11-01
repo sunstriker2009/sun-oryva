@@ -40,3 +40,9 @@ Still required: handle concurrent external Keycloak mutations, ensure no effecti
 ## Effective-role guard
 
 Before marking an admin candidate prepared, the API now checks both direct realm role mappings and Keycloak's composite/effective realm role mapping endpoint. Any effective `master`, `admin`, or `viewer` role fails closed, including roles inherited from composite mappings. The checks are point-in-time and do not protect against concurrent external Keycloak mutation. Activation must repeat identity, ownership and role checks immediately before changes.
+
+## Read-only reconciliation endpoint
+
+`GET /api/master/admins/provisioning/{id}` requires `Oryva.ActiveMaster` and configured Keycloak management credentials. It reports persisted state and whether the current Keycloak identity matches the reservation's username, email, disabled state, ownership marker, bound subject and absence of direct/effective ORYVA roles. Findings include `identity_missing`, `identity_mismatch`, `unexpected_role`, and `verified_disabled_candidate`. Unknown reservation IDs return 404. The endpoint **does not** change state, create users, assign roles, or enable accounts.
+
+A verified inspection is point-in-time, not an activation permit. A future mutating recovery coordinator must serialize per reservation, revalidate all preconditions, and safely handle ambiguous external responses.
