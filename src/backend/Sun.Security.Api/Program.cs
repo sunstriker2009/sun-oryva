@@ -15,6 +15,7 @@ builder.Services.AddSingleton(NpgsqlDataSource.Create(databaseUrl));
 builder.Services.AddScoped<MasterReservationStore>();
 builder.Services.AddOryvaKeycloakJwt(new OryvaJwtOptions { Issuer = issuer, Audience = audience });
 builder.Services.AddOryvaActiveMasterPolicy();
+builder.Services.AddOryvaRolePolicies();
 
 var app = builder.Build();
 app.UseAuthentication();
