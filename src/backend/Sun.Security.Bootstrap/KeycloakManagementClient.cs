@@ -385,6 +385,40 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
     }
 
     /// <summary>
+    /// Low-level viewer realm-role mapping. Only the guarded viewer coordinator
+    /// may call this after a durable intent and exact ownership verification.
+    /// Never enables the account or changes credentials.
+    /// </summary>
+    public async Task AddViewerRoleMappingAsync(
+        string subjectId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(subjectId);
+        options.Validate();
+        var realm = Uri.EscapeDataString(options.Realm);
+        var token = await GetTokenAsync(cancellationToken);
+        using var lookup = new HttpRequestMessage(
+            HttpMethod.Get, new Uri(options.BaseAddress, $"admin/realms/{realm}/roles/viewer"));
+        lookup.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var roleResponse = await http.SendAsync(lookup, cancellationToken);
+        KeycloakHttpClientFactory.EnsureNoRedirect(roleResponse);
+        roleResponse.EnsureSuccessStatusCode();
+        var role = await roleResponse.Content.ReadFromJsonAsync<KeycloakRealmRole>(cancellationToken)
+            ?? throw new InvalidOperationException("Viewer role lookup returned no representation.");
+        if (string.IsNullOrWhiteSpace(role.Id) ||
+            !string.Equals(role.Name, "viewer", StringComparison.Ordinal))
+            throw new InvalidOperationException("Invalid Keycloak viewer role representation.");
+
+        using var assign = new HttpRequestMessage(
+            HttpMethod.Post, new Uri(options.BaseAddress,
+                $"admin/realms/{realm}/users/{Uri.EscapeDataString(subjectId)}/role-mappings/realm"));
+        assign.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        assign.Content = JsonContent.Create(new[] { role });
+        using var response = await http.SendAsync(assign, cancellationToken);
+        KeycloakHttpClientFactory.EnsureNoRedirect(response);
+        response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>
     /// Low-level realm role mapping transport. This method does not enforce the
     /// sole-master policy; callers must use the guarded coordinator.
     /// </summary>

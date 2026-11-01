@@ -532,7 +532,9 @@ Console.WriteLine("PASS pending deactivation denies access before Keycloak disab
 
 // M5: viewer preparation is intentionally disabled/unprivileged and recoverable.
 var viewerStore = new ViewerAccountStore(source);
-var viewerCoordinator = new ViewerPreparationCoordinator(viewerStore, keycloak);
+var viewerLock = new ViewerProvisioningLock(source);
+var viewerCoordinator = new ViewerPreparationCoordinator(viewerStore, keycloak, viewerLock);
+var viewerRoleCoordinator = new ViewerRoleAssignmentCoordinator(viewerStore, keycloak, viewerLock);
 var viewerName = "viewer-candidate-" + Guid.NewGuid().ToString("N")[..12];
 var viewerEmail = viewerName + "@example.invalid";
 var viewerReservations = await Task.WhenAll(
@@ -569,6 +571,93 @@ if (viewerKeycloak.Enabled || viewerKeycloak.EmailVerified ||
 if ((await viewerCoordinator.RecoverAsync(viewerReservation.Id))?.State != "prepared")
     throw new Exception("Viewer recovery should be idempotent.");
 Console.WriteLine("PASS real Keycloak viewer preparation, disabled ownership and idempotent recovery");
+
+// M5: guarded viewer role assignment never enables or credentials the account.
+if (await viewerRoleCoordinator.AssignAsync(Guid.NewGuid(), actor, "master") is not null)
+    throw new Exception("Unknown viewer reservation should not assign a role.");
+var wrongActorRoleRejected = false;
+try { await viewerRoleCoordinator.AssignAsync(viewerReservation.Id, actor, "viewer"); }
+catch (ArgumentException) { wrongActorRoleRejected = true; }
+if (!wrongActorRoleRejected)
+    throw new Exception("Viewer actors must not assign viewer roles.");
+
+await using (var held = await viewerLock.TryAcquireAsync(viewerReservation.Id)
+    ?? throw new Exception("Could not hold viewer provisioning lease."))
+{
+    var blocked = false;
+    try { await viewerRoleCoordinator.AssignAsync(viewerReservation.Id, actor, "master"); }
+    catch (ViewerProvisioningBusyException) { blocked = true; }
+    if (!blocked || (await viewerStore.GetAsync(viewerReservation.Id))?.State != "prepared")
+        throw new Exception("Contended viewer role assignment mutated state.");
+}
+var viewerAssigned = await viewerRoleCoordinator.AssignAsync(viewerReservation.Id, actor, "master");
+if (viewerAssigned?.State != "role_assigned" || !viewerAssigned.Transitioned ||
+    (await viewerStore.GetAsync(viewerReservation.Id))?.State != "role_assigned" ||
+    await viewerStore.IsActiveViewerSubjectAsync(viewerKeycloak.Id) ||
+    (await keycloak.FindProvisionedUserAsync(viewerName))?.Enabled != false ||
+    await keycloak.HasPasswordCredentialAsync(viewerKeycloak.Id) ||
+    !(await keycloak.GetDirectOryvaRolesAsync(viewerKeycloak.Id)).SequenceEqual(["viewer"]) ||
+    !(await keycloak.GetEffectiveOryvaRolesAsync(viewerKeycloak.Id)).SequenceEqual(["viewer"]))
+    throw new Exception("Viewer role assignment must be exclusive, disabled and non-authorizing.");
+if ((await viewerRoleCoordinator.AssignAsync(viewerReservation.Id, actor, "admin"))?.Transitioned != false)
+    throw new Exception("Verified viewer role assignment should be idempotent.");
+var viewerEvents = await viewerStore.GetAuditAsync(viewerReservation.Id);
+if (!viewerEvents.Select(x => x.EventType)
+        .SequenceEqual(["role_assignment_pending", "role_assigned"]) ||
+    viewerEvents.Any(x => x.ActorSubject != actor || x.ActorRole != "master") ||
+    viewerEvents.Zip(viewerEvents.Skip(1)).Any(x => x.First.EventId >= x.Second.EventId))
+    throw new Exception("Viewer role audit must be ordered and actor-bound.");
+Console.WriteLine("PASS viewer role assignment, advisory contention, idempotence, disabled state and audit");
+
+await using (var auditConnection = await source.OpenConnectionAsync())
+await using (var mutation = new NpgsqlCommand(
+    "UPDATE oryva.viewer_provisioning_audit SET actor_role = 'admin' WHERE provisioning_id = @id",
+    auditConnection))
+{
+    mutation.Parameters.AddWithValue("id", viewerReservation.Id);
+    var blocked = false;
+    try { await mutation.ExecuteNonQueryAsync(); }
+    catch (PostgresException ex) when (ex.SqlState == "P0001") { blocked = true; }
+    if (!blocked) throw new Exception("Viewer audit must be append-only.");
+}
+Console.WriteLine("PASS viewer audit updates are rejected by PostgreSQL");
+
+// Simulate a lost Keycloak role-mapping response after durable intent.
+// Reconciliation may adopt only the exact reserved subject and exclusive role.
+var pendingViewerName = "viewer-role-retry-" + Guid.NewGuid().ToString("N")[..12];
+var pendingViewer = await viewerStore.ReserveAsync(
+    pendingViewerName, pendingViewerName + "@example.invalid", actor, "admin");
+await keycloak.CreateDisabledViewerCandidateAsync(
+    pendingViewerName, pendingViewer.Email, pendingViewer.Id);
+var pendingViewerPrepared = await viewerCoordinator.RecoverAsync(pendingViewer.Id)
+    ?? throw new Exception("Missing pending viewer.");
+await viewerStore.MarkRoleAssignmentPendingAsync(
+    pendingViewer.Id, pendingViewerPrepared.KeycloakSubjectId!, actor, "admin");
+await keycloak.AddViewerRoleMappingAsync(pendingViewerPrepared.KeycloakSubjectId!);
+var recoveredViewerRole = await viewerRoleCoordinator.AssignAsync(
+    pendingViewer.Id, actor, "master");
+if (recoveredViewerRole?.State != "role_assigned" ||
+    !recoveredViewerRole.Transitioned ||
+    await viewerStore.IsActiveViewerSubjectAsync(pendingViewerPrepared.KeycloakSubjectId))
+    throw new Exception("Durable pending viewer role was not safely reconciled.");
+Console.WriteLine("PASS interrupted viewer role mapping recovered without activation");
+
+var conflictViewerName = "viewer-role-conflict-" + Guid.NewGuid().ToString("N")[..12];
+var conflictViewer = await viewerStore.ReserveAsync(
+    conflictViewerName, conflictViewerName + "@example.invalid", actor, "master");
+await keycloak.CreateDisabledViewerCandidateAsync(
+    conflictViewerName, conflictViewer.Email, conflictViewer.Id);
+var conflictPrepared = await viewerCoordinator.RecoverAsync(conflictViewer.Id)
+    ?? throw new Exception("Missing conflict viewer.");
+await keycloak.AddAdminRoleMappingAsync(conflictPrepared.KeycloakSubjectId!);
+var conflictRejected = false;
+try { await viewerRoleCoordinator.AssignAsync(conflictViewer.Id, actor, "admin"); }
+catch (InvalidOperationException) { conflictRejected = true; }
+if (!conflictRejected ||
+    (await viewerStore.GetAsync(conflictViewer.Id))?.State != "prepared" ||
+    await viewerStore.IsActiveViewerSubjectAsync(conflictPrepared.KeycloakSubjectId))
+    throw new Exception("Unexpected admin role must block viewer assignment.");
+Console.WriteLine("PASS conflicting Keycloak admin role fails closed for viewer");
 
 var missingViewerName = "viewer-missing-" + Guid.NewGuid().ToString("N")[..12];
 var missingViewer = await viewerStore.ReserveAsync(
