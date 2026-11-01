@@ -20,6 +20,7 @@ builder.Services.AddScoped<AdminProvisioningReconciler>();
 builder.Services.AddScoped<AdminRoleAssignmentCoordinator>();
 builder.Services.AddScoped<AdminActivationReadiness>();
 builder.Services.AddScoped<AdminActivationCoordinator>();
+builder.Services.AddScoped<AdminDeactivationCoordinator>();
 builder.Services.AddOryvaKeycloakJwt(new OryvaJwtOptions { Issuer = issuer, Audience = audience });
 builder.Services.AddOryvaActiveMasterPolicy();
 builder.Services.AddOryvaRolePolicies();
@@ -149,6 +150,31 @@ if (managementConfigured)
         catch (InvalidOperationException)
         {
             return Results.Conflict(new { error = "Activation rejected; inspect provisioning state." });
+        }
+    }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
+
+    // Database-first revocation: immediately denies existing admin JWTs,
+    // then disables Keycloak identity and logs out sessions.
+    app.MapPost("/api/master/admins/provisioning/{id:guid}/deactivate", async (
+        Guid id, AdminDeactivationCoordinator coordinator,
+        System.Security.Claims.ClaimsPrincipal principal,
+        CancellationToken cancellationToken) =>
+    {
+        var actor = principal.FindFirst("sub")?.Value;
+        if (string.IsNullOrWhiteSpace(actor))
+            return Results.Forbid();
+        try
+        {
+            var result = await coordinator.DeactivateAsync(id, actor, cancellationToken);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        }
+        catch (AdminProvisioningBusyException)
+        {
+            return Results.Conflict(new { error = "Provisioning operation already in progress." });
+        }
+        catch (InvalidOperationException)
+        {
+            return Results.Conflict(new { error = "Deactivation pending or rejected; inspect provisioning state." });
         }
     }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
 
