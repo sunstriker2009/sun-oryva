@@ -1,13 +1,26 @@
-# ORYVA role policies — M3 foundation
+# ORYVA role policies — active database authorization
 
-The JWT bearer middleware verifies issuer, audience, signature, lifetime and RS256 before deriving internal `oryva_realm_role` claims from the validated Keycloak realm-access role list. Incoming internal-role claims are rejected. Client roles are not trusted.
+The JWT bearer middleware validates issuer, audience, signature, lifetime and
+RS256 before mapping the Keycloak realm role into the trusted
+`oryva_realm_role` claim. Client roles and unverified internal-role claims
+are not accepted. Missing, duplicate, or conflicting role claims fail closed.
 
 | Operation | Required policy |
 | --- | --- |
-| Master-only account/administrator creation | `Oryva.ActiveMaster` (validated master role **and** active PostgreSQL subject) |
-| Admin operations | `Oryva.Admin` (validated admin realm role) |
-| Read-only viewer operations | `Oryva.Viewer` (validated viewer or admin realm role) |
+| Master-only user administration | `Oryva.ActiveMaster`: validated exclusive master role and active PostgreSQL master subject |
+| Admin operations | `Oryva.Admin`: validated exclusive admin role and committed active PostgreSQL admin subject |
+| Read-only viewer operations | `Oryva.Viewer`: validated exclusive viewer role and active PostgreSQL viewer subject, **or** validated admin role and active PostgreSQL admin subject |
 
-These are intentionally **not** hierarchical for the master: the master role alone does not satisfy admin/viewer policies, and admin never satisfies active-master. Endpoints needing master access alongside admin/viewer access must compose a separately reviewed policy with an active-master database check; do not add `master` to an ordinary role list.
+The master role does not implicitly inherit admin/viewer privileges. An
+active admin may access read-only viewer endpoints, but an active viewer cannot
+access admin endpoints. Each authorization request rechecks the corresponding
+PostgreSQL subject state, so database-first revocation denies previously
+issued tokens without waiting for JWT expiry. PostgreSQL outages do not
+permit role-only fallback.
 
-This PR adds policy registration and trusted realm-role mapping, not user-management endpoints. Production role permissions, disabled-account revocation behavior, and end-to-end role matrix tests remain to be implemented. A JWT may remain valid until expiry after account deactivation unless additional revocation checks are added.
+The viewer database registry and `/api/viewer/session` policy demonstration
+are documented in [Viewer authorization](VIEWER-AUTHORIZATION.md).
+Viewer provisioning, activation, audit and Keycloak logout are **not yet
+implemented**. Do not grant viewer access by directly editing the database in
+production; the isolated E2E runner uses SQL fixtures solely to test the
+authorization boundary.
