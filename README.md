@@ -2,21 +2,26 @@
 
 **SUN-001 · Identity. Trust. Protection.**
 
-ORYVA is an independently deployable security platform and reusable integration packages for ASP.NET Core and React/Next.js. MarketPilot AI is its first planned consumer, not a dependency.
+ORYVA is an independently deployable identity and security platform with reusable ASP.NET Core and React/Next.js integration packages. MarketPilot AI is its first planned consumer, not a dependency.
 
-**Status:** Architecture approved; implementation not started. No working authentication or authorization features are available yet.
+**Status (2026-10-31):** M1 secure sole-master bootstrap implemented and integration-tested. M2 backend Keycloak JWT bearer authentication, active-master authorization policy, protected API endpoint, and real-token HTTP E2E tests merged. Full browser login/logout, user administration, React UI, and consumer integration remain pending.
+
+## Implemented foundations
+- Keycloak realm, PostgreSQL master reservation, and distributed provisioning lock.
+- Idempotent, ownership-verified single-master provisioning and concurrency tests.
+- Strict Keycloak JWT validation, realm master-role mapping, and database-backed active-master authorization.
+- ASP.NET Core API with anonymous liveness and protected `/api/master/session`.
+- CI integration tests against Keycloak and PostgreSQL, including real signed JWT requests.
 
 ## Documentation
 - [Architecture overview](docs/architecture/OVERVIEW.md)
+- [Active-master authorization](docs/architecture/ACTIVE-MASTER-AUTHORIZATION.md)
+- [Protected API](docs/architecture/PROTECTED-API.md)
 - [Security model](docs/architecture/SECURITY-MODEL.md)
 - [Integration boundaries](docs/architecture/INTEGRATION.md)
 - [Milestones](docs/roadmap/MILESTONES.md)
 - [Master development checklist](MASTER-CHECKLIST.md)
-- [Design system v1.0](docs/design-system/README.md), carried forward from [SUN ecosystem PR #3](https://github.com/sunstriker2009/sun-ecosystem/pull/3)
+- [Design system](docs/design-system/README.md)
 - [Architecture decisions](docs/adr/)
 
-SUN-wide brand governance: [sun-ecosystem](https://github.com/sunstriker2009/sun-ecosystem).
-
-Backend namespace: `Sun.Security.*`. Frontend scope: `@sun-security/*`. These are proposed package names, not released artifacts.
-
-All changes go through feature branches and pull requests; no direct commits to `main`.
+Backend namespace: `Sun.Security.*`; frontend scope: `@sun-security/*`. Packages are not yet published. Changes use feature branches and reviewed PRs, not direct commits to main.
