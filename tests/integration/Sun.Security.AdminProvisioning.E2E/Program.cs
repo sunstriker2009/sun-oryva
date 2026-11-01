@@ -72,6 +72,28 @@ if (!await reader.ReadAsync() || reader.GetString(0) != "prepared" ||
     reader.GetString(1) != user.Id)
     throw new Exception("Prepared reservation not persisted correctly.");
 Console.WriteLine("PASS prepared state bound to verified Keycloak subject");
+var firstAudit = await store.GetAuditAsync(reservation.Id);
+var expectedEvents = new[] { "reserved", "reconciliation_required", "subject_bound", "prepared" };
+if (!firstAudit.Select(x => x.EventType).SequenceEqual(expectedEvents) ||
+    firstAudit.Any(x => x.ActorSubject != actor) ||
+    firstAudit.Zip(firstAudit.Skip(1)).Any(pair => pair.First.EventId >= pair.Second.EventId))
+    throw new Exception("Provisioning audit must contain the ordered, actor-bound transitions.");
+Console.WriteLine("PASS atomic, ordered audit events for prepared admin candidate");
+
+await using (var auditConnection = await source.OpenConnectionAsync())
+await using (var mutation = new NpgsqlCommand(
+    "UPDATE oryva.admin_provisioning_audit SET event_type = 'reserved' WHERE provisioning_id = @id",
+    auditConnection))
+{
+    mutation.Parameters.AddWithValue("id", reservation.Id);
+    var blocked = false;
+    try { await mutation.ExecuteNonQueryAsync(); }
+    catch (PostgresException ex) when (ex.SqlState == "P0001") { blocked = true; }
+    if (!blocked)
+        throw new Exception("Audit mutation must be rejected by the database.");
+}
+Console.WriteLine("PASS PostgreSQL rejects updates to append-only audit records");
+
 
 var lockManager = new AdminProvisioningLock(source);
 var reconciler = new AdminProvisioningReconciler(store, keycloak, lockManager);
@@ -128,6 +150,11 @@ var recovery = await reconciler.RecoverAsync(pending.Id);
 if (recovery?.State != "prepared" || !recovery.IdentityVerified)
     throw new Exception("Interrupted Keycloak creation was not safely reconciled.");
 Console.WriteLine("PASS interrupted creation recovered using verified ownership");
+var recoveredAudit = await store.GetAuditAsync(pending.Id);
+if (!recoveredAudit.Select(x => x.EventType).SequenceEqual(expectedEvents))
+    throw new Exception("Recovery must audit subject binding and prepared transition.");
+Console.WriteLine("PASS interrupted recovery produces complete audit history");
+
 
 var unknownRecovery = await reconciler.RecoverAsync(Guid.NewGuid());
 if (unknownRecovery is not null)
