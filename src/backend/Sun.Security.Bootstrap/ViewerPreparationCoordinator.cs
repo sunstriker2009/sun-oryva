@@ -64,8 +64,12 @@ public sealed class ViewerPreparationCoordinator(
 
         if (state.State == "reserved")
             await accounts.MarkPreparedAsync(id, user.Id, cancellationToken);
-        return await accounts.GetAsync(id, cancellationToken)
+        var updated = await accounts.GetAsync(id, cancellationToken)
             ?? throw new InvalidOperationException("Viewer reservation disappeared.");
+        if (updated.State != "prepared" ||
+            !string.Equals(updated.KeycloakSubjectId, user.Id, StringComparison.Ordinal))
+            throw new InvalidOperationException("Viewer preparation state changed during recovery.");
+        return updated;
     }
 }
 
