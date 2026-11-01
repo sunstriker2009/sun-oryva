@@ -1,9 +1,10 @@
 # M5 — guarded viewer preparation, role assignment and activation
 
-This increment introduces preparation, **guarded role assignment**, read-only activation readiness and a guarded activation transition. Viewer deactivation, credential enrollment and full account lifecycle are not yet implemented.
+This increment introduces preparation, **guarded role assignment**, read-only activation readiness and a guarded activation transition. Credential enrollment and the full account lifecycle are not yet implemented.
 Apply `infrastructure/postgres/007_viewer_authorization.sql` and then
 `infrastructure/postgres/008_viewer_role_assignment.sql` and then
-`infrastructure/postgres/009_viewer_activation.sql` before enabling
+`infrastructure/postgres/009_viewer_activation.sql` and then
+`infrastructure/postgres/010_viewer_deactivation.sql` before enabling
 these endpoints. Keycloak must expose the `oryva.provisioning.id` custom user
 attribute to the management service account.
 
@@ -146,10 +147,44 @@ reconciliation and rejection of externally enabled accounts. Test fixtures
 use ephemeral Keycloak/PostgreSQL instances and do not activate production
 accounts.
 
+## Database-first viewer deactivation and recovery
+
+`POST /api/viewers/provisioning/{id}/deactivate` requires a validated
+database-active master or admin with an exclusive corresponding realm role and
+exactly one token subject. A viewer or inactive admin cannot manage viewers.
+The coordinator uses the same cross-instance viewer provisioning advisory lease.
+
+Only `active`, `deactivation_pending` and `deactivated` reservations with
+a bound subject are eligible. For an active reservation, the coordinator
+**commits `deactivation_pending` and its actor-attributed audit before any
+Keycloak I/O**. PostgreSQL viewer authorization accepts only `active`, so
+previously issued access JWTs immediately lose authorization even if Keycloak
+is unreachable. The coordinator then verifies exact subject, username, email
+and the single `oryva.provisioning.id` ownership marker, disables the user,
+rereads disabled status, logs out sessions and rereads again. Only then does
+it atomically commit `deactivated` and the completion audit.
+
+A lost disable/logout response leaves durable pending intent for explicit
+retry under the same lease. A deactivated retry verifies ownership, disabled
+status and logout before returning idempotently. Role drift must not prevent
+revoking a verified owned account. Ownership mismatch never authorizes
+disabling an unrelated Keycloak user. `activation_pending` is intentionally
+not eligible for this operation: it requires guarded activation reconciliation
+first. Network failures may return 5xx while PostgreSQL remains safely
+revoked and pending. Operators should retry only after investigating the
+provider's canonical identity and state.
+
+Migration `010` extends constrained states and append-only actor audit.
+Unknown IDs return 404; lock contention or invalid states return 409.
+No passwords, tokens or production identities are created or changed by CI.
+The Keycloak logout call revokes sessions and refresh tokens; PostgreSQL
+authorization is the protection for previously issued stateless JWTs.
+
 ## Explicitly out of scope
 
-No production credential enrollment, email verification, revocation,
-invitation or production account enablement is added. Guarded activation
+No production credential enrollment, email verification, invitation or
+production account enablement is added. Viewer deactivation is limited to
+already active, owned identities; broader recovery tooling remains outstanding. Guarded activation
 requires previously completed external enrollment and verification.
 Before production, extend durable audit coverage to preparation and lifecycle transitions,
 stable error contracts for external Keycloak failures,
