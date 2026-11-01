@@ -77,6 +77,8 @@ jobs:
           psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/008_viewer_role_assignment.sql
           psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/009_viewer_activation.sql
           psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/009_viewer_activation.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/010_viewer_deactivation.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/010_viewer_deactivation.sql
           psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
           UPDATE oryva.viewer_accounts
              SET keycloak_subject_id = 'ci-viewer-subject', state = 'role_assigned'
@@ -115,6 +117,20 @@ jobs:
               END IF;
             END;
           END $viewer_activation$;
+          DO $viewer_deactivation$
+          BEGIN
+            BEGIN
+              UPDATE oryva.viewer_accounts
+                 SET state = 'deactivation_pending', keycloak_subject_id = NULL
+               WHERE username = 'viewer-one';
+              RAISE EXCEPTION 'deactivation intent without subject accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            INSERT INTO oryva.viewer_provisioning_audit
+                (provisioning_id, event_type, actor_subject, actor_role)
+            VALUES ('00000000-0000-0000-0000-000000000001',
+                    'deactivation_pending', 'ci-master', 'master');
+          END $viewer_deactivation$;
           SQL
       - name: Verify singleton and state constraints
         run: |
