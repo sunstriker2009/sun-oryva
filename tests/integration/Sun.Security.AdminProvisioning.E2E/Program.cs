@@ -272,3 +272,64 @@ catch (InvalidOperationException) { credentialDenied = true; }
 if (!credentialDenied || (await store.GetAsync(credentialed.Id))?.State != "prepared")
     throw new Exception("Pre-credentialed candidate must not be promoted.");
 Console.WriteLine("PASS credentialed admin candidate is rejected before role assignment");
+
+var activationReadiness = new AdminActivationReadiness(store, keycloak, lockManager);
+var uncredentialedReadiness = await activationReadiness.CheckAsync(pending.Id);
+if (uncredentialedReadiness is null || uncredentialedReadiness.Ready ||
+    uncredentialedReadiness.Finding != "password_missing")
+    throw new Exception("Uncredentialed, role-assigned admin must not be activation-ready.");
+Console.WriteLine("PASS real Keycloak uncredentialed admin cannot pass activation preflight");
+
+await using (var held = await lockManager.TryAcquireAsync(pending.Id)
+    ?? throw new Exception("Could not hold activation preflight lease."))
+{
+    var blocked = false;
+    try { await activationReadiness.CheckAsync(pending.Id); }
+    catch (AdminProvisioningBusyException) { blocked = true; }
+    if (!blocked)
+        throw new Exception("Activation preflight must not race a provisioning writer.");
+}
+Console.WriteLine("PASS activation preflight honors cross-instance provisioning lock");
+
+var assignedState = await store.GetAsync(pending.Id)
+    ?? throw new Exception("Assigned reservation disappeared.");
+var syntheticVerified = assignedUser with
+{
+    EmailVerified = true,
+    RequiredActions = new List<string>()
+};
+var ready = AdminActivationReadinessRules.Evaluate(
+    assignedState, syntheticVerified, ["admin"], ["admin"], true);
+if (!ready.Ready || ready.Finding != "ready_for_guarded_activation")
+    throw new Exception("Fully verified synthetic candidate should pass readiness rules.");
+var unverifiedEmail = AdminActivationReadinessRules.Evaluate(
+    assignedState, syntheticVerified with { EmailVerified = false },
+    ["admin"], ["admin"], true);
+var pendingActions = AdminActivationReadinessRules.Evaluate(
+    assignedState, syntheticVerified with { RequiredActions = ["UPDATE_PASSWORD"] },
+    ["admin"], ["admin"], true);
+var missingActionsMetadata = AdminActivationReadinessRules.Evaluate(
+    assignedState, syntheticVerified with { RequiredActions = null },
+    ["admin"], ["admin"], true);
+var inheritedViewer = AdminActivationReadinessRules.Evaluate(
+    assignedState, syntheticVerified, ["admin"], ["admin", "viewer"], true);
+var enabledEarly = AdminActivationReadinessRules.Evaluate(
+    assignedState, syntheticVerified with { Enabled = true },
+    ["admin"], ["admin"], true);
+var mismatchedOwner = AdminActivationReadinessRules.Evaluate(
+    assignedState, syntheticVerified with { Attributes = new Dictionary<string, List<string>>() },
+    ["admin"], ["admin"], true);
+if (unverifiedEmail.Ready || unverifiedEmail.Finding != "email_not_verified" ||
+    pendingActions.Ready || pendingActions.Finding != "required_actions_pending" ||
+    missingActionsMetadata.Ready || missingActionsMetadata.Finding != "required_actions_pending" ||
+    inheritedViewer.Ready || inheritedViewer.Finding != "role_mismatch" ||
+    enabledEarly.Ready || enabledEarly.Finding != "identity_mismatch" ||
+    mismatchedOwner.Ready || mismatchedOwner.Finding != "identity_mismatch")
+    throw new Exception("Activation readiness rules must fail closed on every mismatch.");
+Console.WriteLine("PASS activation readiness requires verified email, completed actions, exclusive role and ownership");
+
+if (await activationReadiness.CheckAsync(Guid.NewGuid()) is not null)
+    throw new Exception("Unknown reservation must not pass activation readiness.");
+if ((await activationReadiness.CheckAsync(unprepared.Id))?.Finding != "role_not_assigned")
+    throw new Exception("Unprepared reservation must not pass activation readiness.");
+Console.WriteLine("PASS missing and unprepared reservations cannot pass activation preflight");
