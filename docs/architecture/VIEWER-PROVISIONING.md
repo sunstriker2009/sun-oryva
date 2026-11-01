@@ -66,6 +66,40 @@ records contain no credentials or tokens. Advisory locking coordinates ORYVA
 writers, but does not fence external Keycloak administrators; production
 permissions must restrict competing privileged writers.
 
+## Viewer activation readiness (read-only)
+
+`GET /api/viewers/provisioning/{id}/activation-readiness` is available only
+with complete Keycloak management configuration and a validated **active master
+or PostgreSQL-active admin** token. A viewer cannot inspect readiness. The
+endpoint returns HTTP 404 for an unknown reservation and HTTP 409 if a
+provisioning operation holds the cross-instance advisory lease.
+
+Under the same lease used for viewer preparation and role assignment, it checks:
+
+1. The persisted viewer reservation is exactly `role_assigned` and has a bound subject.
+2. Keycloak resolves the exact username, subject, email and single
+   `oryva.provisioning.id` ownership marker, and the user is still **disabled**.
+3. Direct **and effective** ORYVA realm roles are each exclusively `viewer`;
+   an inherited `admin` or `master` role rejects readiness.
+4. A password credential exists, email is verified and the required-actions
+   collection is present and empty.
+
+The JSON response includes `provisioningId`, `state`, `ready`, and a
+non-sensitive `finding` such as `role_not_assigned`, `identity_mismatch`,
+`role_mismatch`, `password_missing`, `email_not_verified`,
+`required_actions_pending`, or `ready_for_guarded_activation`.
+
+This preflight **does not** create credentials, mark emails verified, change
+database state, enable Keycloak users, or authorize viewer APIs. Readiness
+is point-in-time; any later activation coordinator must reacquire the lease
+and repeat every verification immediately before a durable activation intent.
+Advisory locks coordinate ORYVA instances but cannot fence an external
+Keycloak administrator, so least-privilege Keycloak administration is required.
+
+The CI integration suite uses isolated test-only credentials to demonstrate
+a positive readiness result without enabling the account. Production
+credential enrollment and verification remain separate, unfinished flows.
+
 ## Explicitly out of scope
 
 No credential enrollment, email verification, activation, revocation,
