@@ -5,7 +5,8 @@ namespace Sun.Security.Bootstrap;
 /// All mismatches fail closed and leave the reservation untouched.
 /// </summary>
 public sealed class AdminProvisioningReconciler(
-    AdminProvisioningStore reservations, KeycloakManagementClient keycloak)
+    AdminProvisioningStore reservations, KeycloakManagementClient keycloak,
+    AdminProvisioningLock provisioningLock)
 {
     /// <summary>
     /// Revalidates a previously created, disabled and marker-owned identity.
@@ -14,23 +15,30 @@ public sealed class AdminProvisioningReconciler(
     public async Task<AdminProvisioningInspection?> RecoverAsync(
         Guid reservationId, CancellationToken cancellationToken = default)
     {
+        await using var lease = await provisioningLock.TryAcquireAsync(reservationId, cancellationToken)
+            ?? throw new AdminProvisioningBusyException();
+
+        // The reservation is loaded only after acquiring the cross-instance lease.
         var state = await reservations.GetAsync(reservationId, cancellationToken);
         if (state is null) return null;
         if (state.State == "prepared")
             return await InspectAsync(reservationId, cancellationToken);
         if (state.State != "reconciliation_required")
             throw new InvalidOperationException("Reservation is not eligible for recovery.");
+
         var inspection = await InspectAsync(reservationId, cancellationToken);
         if (inspection is null || !inspection.IdentityVerified)
             return inspection;
-        // Re-read immediately before the DB transition. All verification is
-        // point-in-time; later activation must independently recheck Keycloak.
+
+        // Repeat the complete role and identity verification immediately before
+        // binding. External Keycloak administrators are outside this lock's scope.
         var verified = await InspectAsync(reservationId, cancellationToken);
         if (verified is null || !verified.IdentityVerified)
             return verified;
         var user = await keycloak.FindProvisionedUserAsync(state.Username, cancellationToken)
             ?? throw new InvalidOperationException("Keycloak identity disappeared during recovery.");
         if (user.Enabled || string.IsNullOrWhiteSpace(user.Id) ||
+            !string.Equals(user.Username, state.Username, StringComparison.Ordinal) ||
             user.Attributes is null ||
             !user.Attributes.TryGetValue("oryva.provisioning.id", out var markers) ||
             markers.Count != 1 || markers[0] != reservationId.ToString("D") ||
@@ -38,7 +46,10 @@ public sealed class AdminProvisioningReconciler(
             (state.KeycloakSubjectId is not null &&
              !string.Equals(state.KeycloakSubjectId, user.Id, StringComparison.Ordinal)))
             throw new InvalidOperationException("Keycloak identity changed during recovery.");
+
+        await lease.EnsureHeldAsync(cancellationToken);
         await reservations.BindReconciledSubjectAsync(reservationId, user.Id, cancellationToken);
+        await lease.EnsureHeldAsync(cancellationToken);
         await reservations.MarkPreparedAsync(reservationId, user.Id, cancellationToken);
         return await InspectAsync(reservationId, cancellationToken);
     }
