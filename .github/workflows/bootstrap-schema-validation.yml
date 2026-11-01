@@ -71,6 +71,44 @@ jobs:
             END;
           END $viewer_guard$;
           SQL
+      - name: Validate viewer activation schema, audit and idempotence
+        run: |
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/008_viewer_role_assignment.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/008_viewer_role_assignment.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/009_viewer_activation.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/009_viewer_activation.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
+          UPDATE oryva.viewer_accounts
+             SET keycloak_subject_id = 'ci-viewer-subject', state = 'role_assigned'
+           WHERE username = 'viewer-one';
+          INSERT INTO oryva.viewer_provisioning_audit
+              (provisioning_id, event_type, actor_subject, actor_role)
+          VALUES ('00000000-0000-0000-0000-000000000001',
+                  'activation_pending', 'ci-master', 'master');
+          DO $viewer_activation$
+          BEGIN
+            BEGIN
+              UPDATE oryva.viewer_accounts
+                 SET state = 'activation_pending', keycloak_subject_id = NULL
+               WHERE username = 'viewer-one';
+              RAISE EXCEPTION 'activation intent without bound subject accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            BEGIN
+              INSERT INTO oryva.viewer_provisioning_audit
+                  (provisioning_id, event_type, actor_subject, actor_role)
+              VALUES ('00000000-0000-0000-0000-000000000001',
+                      'password_changed', 'ci-master', 'master');
+              RAISE EXCEPTION 'unknown viewer audit event accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            BEGIN
+              UPDATE oryva.viewer_provisioning_audit SET actor_role = 'admin';
+              RAISE EXCEPTION 'viewer audit mutation accepted';
+            EXCEPTION WHEN raise_exception THEN NULL;
+            END;
+          END $viewer_activation$;
+          SQL
       - name: Verify singleton and state constraints
         run: |
           psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
