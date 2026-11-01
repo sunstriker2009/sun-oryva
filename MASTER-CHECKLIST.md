@@ -53,7 +53,8 @@
 - [x] Database-backed active-admin authorization and master-only admin deactivation ([PR #63](https://github.com/sunstriker2009/sun-oryva/pull/63), [PR #64](https://github.com/sunstriker2009/sun-oryva/pull/64)).
 - [x] Database-backed viewer authorization, without granting role-only access ([PR #65](https://github.com/sunstriker2009/sun-oryva/pull/65)).
 - [x] Guarded viewer reservation, disabled Keycloak preparation and explicit recovery ([PR #66](https://github.com/sunstriker2009/sun-oryva/pull/66), merged with green CI).
-- [ ] Guarded viewer realm-role assignment, disabled-state verification, cross-instance lock and durable audit (current PR; CI pending).\n- [ ] Viewer credential enrollment, activation, deactivation and recovery; enforce master/active-admin-only viewer management.
+- [ ] Guarded viewer realm-role assignment, disabled-state verification, cross-instance lock and durable audit (current PR; CI pending).
+- [ ] Viewer credential enrollment, activation, deactivation and recovery; enforce master/active-admin-only viewer management.
 - [ ] Password-change and account recovery policies, audit events, API error contracts, rate limits, and full lifecycle security E2E.
 - [ ] Production Keycloak permissions, operational migrations, threat review, release gates and deployment runbooks.
 
