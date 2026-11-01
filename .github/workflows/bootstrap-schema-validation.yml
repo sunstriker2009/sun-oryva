@@ -47,7 +47,7 @@ jobs:
               (id, username, email, requested_by_subject, requested_by_role)
           VALUES ('00000000-0000-0000-0000-000000000001', 'viewer-one',
                   'one@example.invalid', 'test-master', 'master');
-          DO $
+          DO $viewer_guard$
           BEGIN
             BEGIN
               INSERT INTO oryva.viewer_accounts
@@ -69,7 +69,7 @@ jobs:
               RAISE EXCEPTION 'viewer actor role was accepted';
             EXCEPTION WHEN check_violation THEN NULL;
             END;
-          END $;
+          END $viewer_guard$;
           SQL
       - name: Verify singleton and state constraints
         run: |
