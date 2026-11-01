@@ -38,6 +38,39 @@ jobs:
         run: |
           psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/001_master_bootstrap.sql
           psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/001_master_bootstrap.sql
+      - name: Validate viewer schema idempotence and fail-closed constraints
+        run: |
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/007_viewer_authorization.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/007_viewer_authorization.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO oryva.viewer_accounts
+              (id, username, email, requested_by_subject, requested_by_role)
+          VALUES ('00000000-0000-0000-0000-000000000001', 'viewer-one',
+                  'one@example.invalid', 'test-master', 'master');
+          DO $
+          BEGIN
+            BEGIN
+              INSERT INTO oryva.viewer_accounts
+                  (id, username, email, requested_by_subject, requested_by_role)
+              VALUES ('00000000-0000-0000-0000-000000000002', 'viewer-two',
+                      'ONE@example.invalid', 'test-admin', 'admin');
+              RAISE EXCEPTION 'case-insensitive email uniqueness was not enforced';
+            EXCEPTION WHEN unique_violation THEN NULL;
+            END;
+            BEGIN
+              UPDATE oryva.viewer_accounts SET state = 'active'
+              WHERE username = 'viewer-one';
+              RAISE EXCEPTION 'active viewer without subject was accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            BEGIN
+              UPDATE oryva.viewer_accounts SET requested_by_role = 'viewer'
+              WHERE username = 'viewer-one';
+              RAISE EXCEPTION 'viewer actor role was accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+          END $;
+          SQL
       - name: Verify singleton and state constraints
         run: |
           psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
