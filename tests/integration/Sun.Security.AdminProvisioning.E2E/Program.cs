@@ -1,3 +1,13 @@
+using System.Security.Claims;
+using System.Text.Encodings.Web;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Sun.Security.AspNetCore;
 using System.Net.Http.Json;
 using Npgsql;
 using Sun.Security.Bootstrap;
@@ -382,6 +392,59 @@ if (!activationEvents.Select(e => e.EventType).TakeLast(2)
     throw new Exception("Activation intent and confirmation must be audited.");
 Console.WriteLine("PASS verified activation, exclusive role, lease, idempotence and audit");
 
+// Database state, not a valid admin realm role alone, authorizes API operations.
+var activeAdmins = new ActiveAdminAuthorization(store);
+if (!await activeAdmins.IsActiveAdminSubjectAsync(activateUser.Id, true) ||
+    await activeAdmins.IsActiveAdminSubjectAsync(activateUser.Id, false) ||
+    await activeAdmins.IsActiveAdminSubjectAsync(assignedUser.Id, true) ||
+    await activeAdmins.IsActiveAdminSubjectAsync("unknown-subject", true) ||
+    await activeAdmins.IsActiveAdminSubjectAsync(null, true))
+    throw new Exception("Active-admin database gate accepted an inactive or invalid identity.");
+Console.WriteLine("PASS active-admin database authorization accepts only committed active subject");
+
+var webBuilder = WebApplication.CreateBuilder(
+    new WebApplicationOptions { EnvironmentName = "Development" });
+webBuilder.WebHost.UseTestServer();
+webBuilder.Services.AddSingleton(source);
+webBuilder.Services.AddScoped<AdminProvisioningStore>();
+webBuilder.Services.AddAuthentication("E2EAdmin")
+    .AddScheme<AuthenticationSchemeOptions, E2EAdminAuthHandler>("E2EAdmin", _ => { });
+webBuilder.Services.AddOryvaRolePolicies();
+await using (var webApp = webBuilder.Build())
+{
+    webApp.UseAuthentication();
+    webApp.UseAuthorization();
+    webApp.MapGet("/test/admin", () => Microsoft.AspNetCore.Http.Results.Ok())
+        .RequireAuthorization(OryvaRolePolicyExtensions.Admin);
+    webApp.MapGet("/test/viewer", () => Microsoft.AspNetCore.Http.Results.Ok())
+        .RequireAuthorization(OryvaRolePolicyExtensions.Viewer);
+    await webApp.StartAsync();
+    using var client = webApp.GetTestClient();
+    async Task CheckAsync(string route, string? subject, string? role,
+        System.Net.HttpStatusCode expected)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, route);
+        if (subject is not null) request.Headers.Add("X-E2E-Subject", subject);
+        if (role is not null) request.Headers.Add("X-E2E-Role", role);
+        using var response = await client.SendAsync(request);
+        if (response.StatusCode != expected)
+            throw new Exception($"HTTP {route} subject={subject} role={role} expected {(int)expected}, got {(int)response.StatusCode}");
+    }
+    await CheckAsync("/test/admin", null, null, System.Net.HttpStatusCode.Unauthorized);
+    await CheckAsync("/test/admin", activateUser.Id, "viewer", System.Net.HttpStatusCode.Forbidden);
+    await CheckAsync("/test/admin", activateUser.Id, "master", System.Net.HttpStatusCode.Forbidden);
+    await CheckAsync("/test/admin", assignedUser.Id, "admin", System.Net.HttpStatusCode.Forbidden);
+    await CheckAsync("/test/viewer", assignedUser.Id, "admin", System.Net.HttpStatusCode.Forbidden);
+    await CheckAsync("/test/admin", "unknown-subject", "admin", System.Net.HttpStatusCode.Forbidden);
+    await CheckAsync("/test/admin", activateUser.Id, "admin", System.Net.HttpStatusCode.OK);
+    await CheckAsync("/test/viewer", activateUser.Id, "admin", System.Net.HttpStatusCode.OK);
+    await CheckAsync("/test/viewer", assignedUser.Id, "viewer", System.Net.HttpStatusCode.OK);
+    await CheckAsync("/test/viewer", activateUser.Id, "master", System.Net.HttpStatusCode.Forbidden);
+    await CheckAsync("/test/admin", activateUser.Id, "admin,viewer", System.Net.HttpStatusCode.Forbidden);
+    Console.WriteLine("PASS HTTP admin/viewer policies enforce active DB state, exclusive role, 401/403/200");
+    await webApp.StopAsync();
+}
+
 // Simulate Keycloak enabling a verified candidate while the HTTP response is lost.
 // A retry must adopt only a previously persisted activation_pending intent.
 var ambiguousActivationName = "admin-enable-retry-" + Guid.NewGuid().ToString("N")[..12];
@@ -444,4 +507,25 @@ static async Task VerifyTestEmailAsync(
     });
     using var response = await client.SendAsync(update);
     response.EnsureSuccessStatusCode();
+}
+
+sealed class E2EAdminAuthHandler(
+    IOptionsMonitor<AuthenticationSchemeOptions> options,
+    ILoggerFactory logger, UrlEncoder encoder)
+    : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+{
+    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+    {
+        if (!Request.Headers.TryGetValue("X-E2E-Subject", out var subject))
+            return Task.FromResult(AuthenticateResult.NoResult());
+        var claims = new List<Claim> { new("sub", subject.ToString()) };
+        if (Request.Headers.TryGetValue("X-E2E-Role", out var role))
+        {
+            foreach (var value in role.ToString().Split(','))
+                claims.Add(new Claim("oryva_realm_role", value));
+        }
+        return Task.FromResult(AuthenticateResult.Success(
+            new AuthenticationTicket(
+                new ClaimsPrincipal(new ClaimsIdentity(claims, Scheme.Name)), Scheme.Name)));
+    }
 }
