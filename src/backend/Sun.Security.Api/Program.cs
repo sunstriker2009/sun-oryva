@@ -112,6 +112,14 @@ if (managementConfigured)
         {
             return Results.Conflict(new { error = "Viewer identity already reserved." });
         }
+        catch (ViewerPreparationPendingException pending)
+        {
+            return Results.Conflict(new {
+                provisioningId = pending.ProvisioningId,
+                status = "reserved",
+                error = "Viewer preparation incomplete; use the recovery endpoint."
+            });
+        }
         catch (InvalidOperationException)
         {
             return Results.Conflict(new {
