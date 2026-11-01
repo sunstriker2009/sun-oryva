@@ -125,6 +125,47 @@ await using (var webApp = webBuilder.Build())
     await webApp.StopAsync();
 }
 
+// The bootstrap intentionally leaves email unverified. For this isolated
+// direct-grant E2E, finish the test identity's required actions via the
+// restricted CI management service account. Never do this in production.
+using (var adminHttp = new HttpClient())
+{
+    var adminTokenUrl = "http://127.0.0.1:8080/realms/oryva/protocol/openid-connect/token";
+    using var adminGrant = new FormUrlEncodedContent(new Dictionary<string, string>
+    {
+        ["grant_type"] = "client_credentials",
+        ["client_id"] = "oryva-e2e-bootstrap",
+        ["client_secret"] = secret
+    });
+    using var adminTokenResponse = await adminHttp.PostAsync(adminTokenUrl, adminGrant);
+    adminTokenResponse.EnsureSuccessStatusCode();
+    using var adminJson = System.Text.Json.JsonDocument.Parse(
+        await adminTokenResponse.Content.ReadAsStringAsync());
+    var adminAccessToken = adminJson.RootElement.GetProperty("access_token").GetString();
+    var userUrl = "http://127.0.0.1:8080/admin/realms/oryva/users/" +
+        Uri.EscapeDataString(active.SubjectId);
+    using var getUser = new HttpRequestMessage(HttpMethod.Get, userUrl);
+    getUser.Headers.Authorization =
+        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", adminAccessToken);
+    using var userResponse = await adminHttp.SendAsync(getUser);
+    userResponse.EnsureSuccessStatusCode();
+    using var userJson = System.Text.Json.JsonDocument.Parse(
+        await userResponse.Content.ReadAsStringAsync());
+    var required = userJson.RootElement.TryGetProperty("requiredActions", out var actions)
+        ? actions.ToString() : "[]";
+    Console.WriteLine("CI test master required actions before completion: " + required);
+    using var update = new HttpRequestMessage(HttpMethod.Put, userUrl);
+    update.Headers.Authorization =
+        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", adminAccessToken);
+    update.Content = System.Net.Http.Json.JsonContent.Create(new
+    {
+        emailVerified = true,
+        requiredActions = Array.Empty<string>()
+    });
+    using var updateResponse = await adminHttp.SendAsync(update);
+    updateResponse.EnsureSuccessStatusCode();
+}
+
 // Real Keycloak-issued JWT validation through the production bearer middleware.
 // The E2E test client is configured with an audience mapper in setup_keycloak_e2e.py.
 using (var tokenClient = new HttpClient())
