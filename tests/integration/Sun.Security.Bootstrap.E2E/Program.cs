@@ -160,6 +160,8 @@ using (var adminHttp = new HttpClient())
     update.Content = System.Net.Http.Json.JsonContent.Create(new
     {
         emailVerified = true,
+        firstName = "E2E",
+        lastName = "Master",
         requiredActions = Array.Empty<string>()
     });
     using var updateResponse = await adminHttp.SendAsync(update);
