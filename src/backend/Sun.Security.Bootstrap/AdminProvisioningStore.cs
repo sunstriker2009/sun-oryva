@@ -118,7 +118,7 @@ public sealed class AdminProvisioningStore(NpgsqlDataSource dataSource)
         command.Parameters.AddWithValue("email", email);
         command.Parameters.AddWithValue("actor", actorSubject);
         command.Parameters.AddWithValue("subject", keycloakSubjectId);
-        if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+        if (await command.ExecuteScalarAsync(cancellationToken) is null)
             throw new InvalidOperationException("Provisioning identity binding mismatch.");
     }
 
@@ -192,7 +192,7 @@ public sealed class AdminProvisioningStore(NpgsqlDataSource dataSource)
             RETURNING provisioning_id;
             """, connection);
         command.Parameters.AddWithValue("id", id);
-        if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+        if (await command.ExecuteScalarAsync(cancellationToken) is null)
             throw new InvalidOperationException("Admin provisioning reservation is not pending.");
     }
 }
