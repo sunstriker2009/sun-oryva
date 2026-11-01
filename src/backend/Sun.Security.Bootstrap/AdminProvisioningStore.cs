@@ -42,6 +42,27 @@ public sealed class AdminProvisioningStore(NpgsqlDataSource dataSource)
     }
 
     /// <summary>
+    /// Runtime authorization gate. Only a fully committed active reservation
+    /// with the exact Keycloak subject may authorize an admin. Never caches.
+    /// Database errors propagate and therefore fail closed.
+    /// </summary>
+    public async Task<bool> IsActiveAdminSubjectAsync(
+        string? subjectId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(subjectId)) return false;
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            SELECT EXISTS (
+                SELECT 1 FROM oryva.admin_provisioning
+                WHERE keycloak_subject_id = @subject AND state = 'active'
+            );
+            """, connection);
+        command.Parameters.AddWithValue("subject", subjectId);
+        return (bool)(await command.ExecuteScalarAsync(cancellationToken)
+            ?? throw new InvalidOperationException("Active admin lookup returned no result."));
+    }
+
+    /// <summary>
     /// Reads a reservation by opaque identifier. Caller must enforce active-master
     /// authorization; this read alone never permits account activation.
     /// </summary>

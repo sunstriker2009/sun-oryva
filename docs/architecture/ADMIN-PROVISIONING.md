@@ -108,3 +108,23 @@ PostgreSQL advisory locks do not fence independent Keycloak administrators. Rest
 - [ ] Password change and recovery paths
 - [ ] Account lifecycle audit, rate limiting and consistent API errors
 - [ ] Deployment migrations, least-privilege operational guidance and final security E2E
+
+## Runtime active-admin authorization
+
+`Oryva.Admin` no longer accepts a realm role by itself. The JWT bearer pipeline must first validate signature, issuer, audience, expiry and a single exclusive ORYVA realm role. Every authorized admin request then queries `oryva.admin_provisioning` for the exact `keycloak_subject_id` with committed `state = 'active'`. An `activation_pending`, `role_assigned`, unbound, missing, or unknown subject is denied even with a signed admin token. Database errors propagate and never fall back to role-only authorization. No positive authorization decision is cached.
+
+`Oryva.Viewer` permits an exclusive viewer realm role; an admin may use viewer endpoints only when its subject passes the same active-admin database check. Master tokens are not implicitly admins or viewers. `GET /api/admin/session` is a guarded demonstration of the admin policy.
+
+**Operational caveat:** Keycloak role/enablement changes do not instantly revoke already-issued access tokens. Admin revocation must first transition PostgreSQL out of `active` (and revoke Keycloak sessions); until a deactivation workflow is implemented, operators must not assume disabling a Keycloak user alone revokes already-issued JWT access. The current viewer policy is role-only until viewer lifecycle and revocation persistence are implemented. Deploy migrations 001–005 before serving these policies.
+
+## Backend v1 remaining
+
+- [x] Master bootstrap and exclusive master authorization
+- [x] Admin reservation, ownership checks, recovery, audit, role assignment and guarded activation
+- [x] Active-admin PostgreSQL runtime authorization
+- [ ] Secure invitation and credential enrollment (no CI-only email verification in production)
+- [ ] Admin deactivation and durable revocation
+- [ ] Master-managed viewer provisioning and viewer revocation
+- [ ] Admin-managed viewer activation/deactivation, with master oversight
+- [ ] Password change/recovery and session revocation
+- [ ] Production rate limiting, error normalization, secret rotation, migration deployment, operational security and final E2E release gate
