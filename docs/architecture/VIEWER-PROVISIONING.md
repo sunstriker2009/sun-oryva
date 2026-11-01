@@ -1,7 +1,8 @@
-# M5 — guarded viewer preparation (disabled-account foundation)
+# M5 — guarded viewer preparation and disabled realm-role assignment
 
-This increment introduces **preparation only**, not a fully active viewer lifecycle.
-Apply `infrastructure/postgres/007_viewer_authorization.sql` before enabling
+This increment introduces preparation and **guarded role assignment**, not a fully active viewer lifecycle.
+Apply `infrastructure/postgres/007_viewer_authorization.sql` and then
+`infrastructure/postgres/008_viewer_role_assignment.sql` before enabling
 these endpoints. Keycloak must expose the `oryva.provisioning.id` custom user
 attribute to the management service account.
 
@@ -40,15 +41,42 @@ conditional SQL. The reservation ID is returned in the conflict response when th
 remains connected; otherwise privileged database inspection can locate it.
 A future operational lookup API should improve this recovery experience.
 
+## Guarded role assignment
+
+`POST /api/viewers/provisioning/{id}/assign-viewer-role` requires the same
+active-master/active-admin authorization as viewer preparation, with a single
+validated token subject and exclusive ORYVA role. It takes a cross-instance
+PostgreSQL advisory lease and verifies the exact reservation subject,
+ownership marker, username, email, disabled and unverified-email status,
+absence of password credentials, and zero or exclusively `viewer` direct
+**and effective** ORYVA realm roles. Any `master` or `admin` role fails closed.
+
+A `prepared` reservation must have zero roles. The coordinator commits
+`role_assignment_pending` and its actor-bound audit event before contacting
+Keycloak. It assigns only the `viewer` realm role, then re-reads Keycloak and
+commits `role_assigned` with a second audit event only after verification.
+A lost response leaves durable intent for explicit retry. `role_assigned`
+is still disabled and does not authorize viewer API access. A repeat on
+`role_assigned` verifies Keycloak and returns an idempotent result.
+
+`GET /api/viewers/provisioning/{id}/audit` returns the append-only,
+transactional role-assignment audit history to active master/admin callers.
+The database rejects UPDATE, DELETE and TRUNCATE of the audit table. These
+records contain no credentials or tokens. Advisory locking coordinates ORYVA
+writers, but does not fence external Keycloak administrators; production
+permissions must restrict competing privileged writers.
+
 ## Explicitly out of scope
 
-No viewer realm role assignment, credential enrollment, email verification,
-activation, revocation, invitation or production account enablement is added.
-Before production, implement cross-instance locks for privileged transitions,
-durable audit events, stable error contracts for external Keycloak failures,
+No credential enrollment, email verification, activation, revocation,
+invitation or production account enablement is added.
+Before production, extend durable audit coverage to preparation and lifecycle transitions,
+stable error contracts for external Keycloak failures,
 rate limiting and operational recovery. HTTP authorization E2E covers the active-admin and role-conflict branches; active-master management E2E remains outstanding.
 
-The real Keycloak/PostgreSQL E2E suite verifies reservation contention,
+The real Keycloak/PostgreSQL E2E suite verifies guarded viewer role assignment,
+role exclusivity, cross-instance lock contention, lost-response recovery,
+append-only audit, reservation contention,
 case-insensitive duplicate rejection, canonical disabled identity, no roles or
 password, idempotent recovery, missing identity rejection and ownership-marker
 mismatch. Production Keycloak service-account permissions require a separate
