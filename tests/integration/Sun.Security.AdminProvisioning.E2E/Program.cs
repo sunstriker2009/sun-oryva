@@ -737,6 +737,61 @@ await using (var mutation = new NpgsqlCommand(
 }
 Console.WriteLine("PASS viewer audit updates are rejected by PostgreSQL");
 
+// Revocation commits before Keycloak I/O and denies old viewer JWTs via DB.
+var viewerDeactivator = new ViewerDeactivationCoordinator(viewerStore, keycloak, viewerLock);
+if (await viewerDeactivator.DeactivateAsync(Guid.NewGuid(), actor, "master") is not null)
+    throw new Exception("Unknown viewer reservation must not be deactivated.");
+var unactivatedDeactivationRejected = false;
+try { await viewerDeactivator.DeactivateAsync(reservedViewer.Id, actor, "admin"); }
+catch (InvalidOperationException) { unactivatedDeactivationRejected = true; }
+if (!unactivatedDeactivationRejected)
+    throw new Exception("Unactivated viewer must not enter deactivation.");
+var viewerDeactivationActorRejected = false;
+try { await viewerDeactivator.DeactivateAsync(viewerReservation.Id, actor, "viewer"); }
+catch (ArgumentException) { viewerDeactivationActorRejected = true; }
+if (!viewerDeactivationActorRejected)
+    throw new Exception("Viewer actor must not deactivate viewers.");
+await using (var held = await viewerLock.TryAcquireAsync(viewerReservation.Id)
+    ?? throw new Exception("Could not hold viewer deactivation lease."))
+{
+    var blocked = false;
+    try { await viewerDeactivator.DeactivateAsync(viewerReservation.Id, actor, "master"); }
+    catch (ViewerProvisioningBusyException) { blocked = true; }
+    if (!blocked || !await viewerStore.IsActiveViewerSubjectAsync(viewerKeycloak.Id))
+        throw new Exception("Contended viewer deactivation mutated state.");
+}
+var wrongViewerRevocationSubject = false;
+try { await viewerStore.MarkDeactivationPendingAsync(
+    viewerReservation.Id, "foreign-subject", actor, "master"); }
+catch (InvalidOperationException) { wrongViewerRevocationSubject = true; }
+if (!wrongViewerRevocationSubject)
+    throw new Exception("Viewer revocation intent accepted foreign subject.");
+var skippedViewerRevocationIntent = false;
+try { await viewerStore.MarkDeactivatedAsync(
+    viewerReservation.Id, viewerKeycloak.Id, actor, "master"); }
+catch (InvalidOperationException) { skippedViewerRevocationIntent = true; }
+if (!skippedViewerRevocationIntent)
+    throw new Exception("Viewer revocation confirmation bypassed intent.");
+var viewerRevoked = await viewerDeactivator.DeactivateAsync(
+    viewerReservation.Id, actor, "admin");
+if (viewerRevoked?.State != "deactivated" || !viewerRevoked.Transitioned ||
+    (await viewerStore.GetAsync(viewerReservation.Id))?.State != "deactivated" ||
+    (await keycloak.FindProvisionedUserAsync(viewerName))?.Enabled != false ||
+    await viewerStore.IsActiveViewerSubjectAsync(viewerKeycloak.Id))
+    throw new Exception("Viewer deactivation failed to revoke database and Keycloak access.");
+var viewerRevocationRepeat = await viewerDeactivator.DeactivateAsync(
+    viewerReservation.Id, actor, "master");
+if (viewerRevocationRepeat?.Transitioned != false ||
+    viewerRevocationRepeat.State != "deactivated")
+    throw new Exception("Viewer deactivation must be idempotent.");
+var viewerRevocationEvents = (await viewerStore.GetAuditAsync(viewerReservation.Id))
+    .TakeLast(2).ToArray();
+if (!viewerRevocationEvents.Select(x => x.EventType)
+        .SequenceEqual(["deactivation_pending", "deactivated"]) ||
+    viewerRevocationEvents.Any(x => x.ActorSubject != actor || x.ActorRole != "admin"))
+    throw new Exception("Viewer revocation intent/completion must be actor audited.");
+Console.WriteLine("PASS viewer database-first deactivation, contention, actor gate and audit");
+
 // Simulate a lost Keycloak role-mapping response after durable intent.
 // Reconciliation may adopt only the exact reserved subject and exclusive role.
 var pendingViewerName = "viewer-role-retry-" + Guid.NewGuid().ToString("N")[..12];
@@ -783,6 +838,30 @@ if (!recoveredViewerEvents.Select(x => x.EventType)
     recoveredViewerEvents[1].ActorRole != "master")
     throw new Exception("Recovered viewer activation must preserve actual actor attribution.");
 Console.WriteLine("PASS ambiguous Keycloak viewer enable response reconciles only durable intent");
+
+// Simulate lost Keycloak disable response after database-first revocation.
+// Pending state must deny access even while Keycloak is still enabled.
+await viewerStore.MarkDeactivationPendingAsync(
+    pendingViewer.Id, pendingViewerPrepared.KeycloakSubjectId!, actor, "master");
+if (await viewerStore.IsActiveViewerSubjectAsync(pendingViewerPrepared.KeycloakSubjectId) ||
+    (await keycloak.FindProvisionedUserAsync(pendingViewerName))?.Enabled != true)
+    throw new Exception("Pending viewer revocation must deny access before Keycloak I/O.");
+await keycloak.DisableUserAsync(pendingViewerPrepared.KeycloakSubjectId!);
+var recoveredViewerRevocation = await viewerDeactivator.DeactivateAsync(
+    pendingViewer.Id, actor, "admin");
+if (recoveredViewerRevocation?.State != "deactivated" ||
+    !recoveredViewerRevocation.Transitioned ||
+    await viewerStore.IsActiveViewerSubjectAsync(pendingViewerPrepared.KeycloakSubjectId) ||
+    (await keycloak.FindProvisionedUserAsync(pendingViewerName))?.Enabled != false)
+    throw new Exception("Lost viewer disable response did not reconcile.");
+var recoveredRevocationEvents = (await viewerStore.GetAuditAsync(pendingViewer.Id))
+    .TakeLast(2).ToArray();
+if (!recoveredRevocationEvents.Select(x => x.EventType)
+        .SequenceEqual(["deactivation_pending", "deactivated"]) ||
+    recoveredRevocationEvents[0].ActorRole != "master" ||
+    recoveredRevocationEvents[1].ActorRole != "admin")
+    throw new Exception("Viewer recovery audit must preserve actor attribution.");
+Console.WriteLine("PASS pending viewer revocation denies JWTs and recovers lost response");
 
 // Never adopt an externally enabled account that lacks ORYVA activation intent.
 var externalViewerName = "viewer-external-enable-" + Guid.NewGuid().ToString("N")[..12];

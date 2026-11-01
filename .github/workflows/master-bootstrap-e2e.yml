@@ -88,6 +88,9 @@ jobs:
       - name: Initialize guarded viewer activation schema
         run: |
           PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/009_viewer_activation.sql
+      - name: Initialize database-first viewer deactivation schema
+        run: |
+          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/010_viewer_deactivation.sql
       - name: Run actual .NET bootstrap against Keycloak and PostgreSQL
         run: dotnet run --project tests/integration/Sun.Security.Bootstrap.E2E/Sun.Security.Bootstrap.E2E.csproj -c Release
       - name: Run viewer authorization PostgreSQL and HTTP E2E
