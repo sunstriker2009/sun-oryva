@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Sun.Security.Api;
 using Npgsql;
 using Sun.Security.AspNetCore;
 using Sun.Security.Bootstrap;
@@ -67,9 +68,7 @@ if (managementConfigured)
         PrepareAdminRequest input, KeycloakManagementClient management,
         CancellationToken cancellationToken) =>
     {
-        if (string.IsNullOrWhiteSpace(input.Username) ||
-            string.IsNullOrWhiteSpace(input.Email) ||
-            input.Username.Length > 128 || input.Email.Length > 254)
+        if (!AdminPreparationValidation.IsValid(input.Username, input.Email))
             return Results.BadRequest(new { error = "Valid username and email are required." });
 
         await management.CreateDisabledUserAsync(
