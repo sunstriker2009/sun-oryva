@@ -17,10 +17,19 @@ public sealed class ViewerPreparationCoordinator(
             username, email, actorSubject, actorRole, cancellationToken);
         // If Keycloak times out after creating the user, keep the reservation.
         // The caller can explicitly reconcile it using its opaque ID.
-        await keycloak.CreateDisabledViewerCandidateAsync(
-            username, email, reservation.Id, cancellationToken);
-        return await RecoverAsync(reservation.Id, cancellationToken)
-            ?? throw new InvalidOperationException("Viewer reservation disappeared.");
+        try
+        {
+            await keycloak.CreateDisabledViewerCandidateAsync(
+                username, email, reservation.Id, cancellationToken);
+            return await RecoverAsync(reservation.Id, cancellationToken)
+                ?? throw new InvalidOperationException("Viewer reservation disappeared.");
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            // The external write may have succeeded despite a lost response.
+            // Surface the durable ID; never retry creation or silently adopt.
+            throw new ViewerPreparationPendingException(reservation.Id, error);
+        }
     }
 
     /// <summary>
@@ -57,5 +66,16 @@ public sealed class ViewerPreparationCoordinator(
             await accounts.MarkPreparedAsync(id, user.Id, cancellationToken);
         return await accounts.GetAsync(id, cancellationToken)
             ?? throw new InvalidOperationException("Viewer reservation disappeared.");
+    }
+}
+
+public sealed class ViewerPreparationPendingException : InvalidOperationException
+{
+    public Guid ProvisioningId { get; }
+
+    public ViewerPreparationPendingException(Guid provisioningId, Exception inner)
+        : base("Viewer preparation is incomplete; explicit reconciliation required.", inner)
+    {
+        ProvisioningId = provisioningId;
     }
 }
