@@ -35,6 +35,35 @@ public sealed class AdminProvisioningStore(NpgsqlDataSource dataSource)
         return new AdminProvisioningReservation(id, username, email, actorSubject);
     }
 
+    /// <summary>
+    /// Binds the verified Keycloak subject to the original reservation.
+    /// Does not mark the account prepared until ownership markers are supported.
+    /// </summary>
+    public async Task BindVerifiedSubjectAsync(
+        Guid id, string username, string email, string actorSubject,
+        string keycloakSubjectId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(keycloakSubjectId);
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            UPDATE oryva.admin_provisioning
+            SET keycloak_subject_id = @subject,
+                state = 'reconciliation_required',
+                updated_at = now()
+            WHERE id = @id AND username = @username AND email = @email
+              AND requested_by_subject = @actor
+              AND state = 'reconciliation_required'
+              AND (keycloak_subject_id IS NULL OR keycloak_subject_id = @subject);
+            """, connection);
+        command.Parameters.AddWithValue("id", id);
+        command.Parameters.AddWithValue("username", username);
+        command.Parameters.AddWithValue("email", email);
+        command.Parameters.AddWithValue("actor", actorSubject);
+        command.Parameters.AddWithValue("subject", keycloakSubjectId);
+        if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+            throw new InvalidOperationException("Provisioning identity binding mismatch.");
+    }
+
     public async Task MarkReconciliationRequiredAsync(
         Guid id, CancellationToken cancellationToken = default)
     {
