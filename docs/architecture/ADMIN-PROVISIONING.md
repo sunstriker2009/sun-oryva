@@ -52,3 +52,11 @@ A verified inspection is point-in-time, not an activation permit. A future mutat
 `POST /api/master/admins/provisioning/{id}/recover` requires the active-master policy. For `reconciliation_required` reservations, it rechecks the existing disabled Keycloak account, ownership marker, email, subject binding and direct/effective ORYVA role absence, then conditionally binds the subject and marks the reservation `prepared`. It never creates, enables, adopts unmarked identities or assigns roles. Missing reservations return 404; unverified candidates return 409. Prepared reservations are inspected without mutation.
 
 Recovery is not a substitute for serialization across independent Keycloak writes. Before admin activation, introduce per-reservation locking and repeat checks at the activation boundary.
+
+## Cross-instance recovery serialization
+
+The recovery endpoint acquires a session-scoped PostgreSQL advisory lock derived from the reservation UUID (a stable SHA-256-based, namespaced 32-bit key) **before** reading the reservation. Only one ORYVA recovery coordinator can advance the same reservation at a time across API instances using the same PostgreSQL database. Different reservations can progress independently; a rare hash collision merely serializes unrelated reservations.
+
+The lease remains open across Keycloak reads and PostgreSQL transitions, and the coordinator checks that the session still holds it before binding the subject and marking the reservation prepared. A concurrent recovery returns HTTP 409 without mutating the reservation. The lease explicitly unlocks before returning its connection to the pool. The PostgreSQL/Keycloak integration test verifies cross-session exclusion, no mutation under contention, independent reservation locks and release/reacquisition.
+
+**Important boundary:** PostgreSQL advisory locks coordinate ORYVA callers only. They do not fence an external Keycloak administrator, a lost network response, or a different system modifying Keycloak. An activation coordinator must recheck Keycloak immediately before each privilege-changing operation, use its own recovery state machine and fail closed on ambiguity. No admin role assignment, enablement or invitation is introduced by this increment.
