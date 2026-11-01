@@ -19,6 +19,7 @@ builder.Services.AddScoped<AdminProvisioningLock>();
 builder.Services.AddScoped<AdminProvisioningReconciler>();
 builder.Services.AddScoped<AdminRoleAssignmentCoordinator>();
 builder.Services.AddScoped<AdminActivationReadiness>();
+builder.Services.AddScoped<AdminActivationCoordinator>();
 builder.Services.AddOryvaKeycloakJwt(new OryvaJwtOptions { Issuer = issuer, Audience = audience });
 builder.Services.AddOryvaActiveMasterPolicy();
 builder.Services.AddOryvaRolePolicies();
@@ -121,6 +122,27 @@ if (managementConfigured)
         catch (AdminProvisioningBusyException)
         {
             return Results.Conflict(new { error = "Provisioning operation already in progress." });
+        }
+    }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
+
+    // Master-only activation. Rechecks all Keycloak conditions under the lease,
+    // persists intent before enablement and reconciles ambiguous remote writes.
+    app.MapPost("/api/master/admins/provisioning/{id:guid}/activate", async (
+        Guid id, AdminActivationCoordinator coordinator,
+        CancellationToken cancellationToken) =>
+    {
+        try
+        {
+            var result = await coordinator.ActivateAsync(id, cancellationToken);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        }
+        catch (AdminProvisioningBusyException)
+        {
+            return Results.Conflict(new { error = "Provisioning operation already in progress." });
+        }
+        catch (InvalidOperationException)
+        {
+            return Results.Conflict(new { error = "Activation rejected; inspect provisioning state." });
         }
     }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
 

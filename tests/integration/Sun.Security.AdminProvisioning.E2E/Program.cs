@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using Npgsql;
 using Sun.Security.Bootstrap;
 
@@ -333,3 +334,114 @@ if (await activationReadiness.CheckAsync(Guid.NewGuid()) is not null)
 if ((await activationReadiness.CheckAsync(unprepared.Id))?.Finding != "role_not_assigned")
     throw new Exception("Unprepared reservation must not pass activation readiness.");
 Console.WriteLine("PASS missing and unprepared reservations cannot pass activation preflight");
+
+var activator = new AdminActivationCoordinator(store, keycloak, lockManager);
+var refusedUncredentialed = false;
+try { await activator.ActivateAsync(pending.Id); }
+catch (InvalidOperationException) { refusedUncredentialed = true; }
+if (!refusedUncredentialed || (await store.GetAsync(pending.Id))?.State != "role_assigned" ||
+    (await keycloak.FindProvisionedUserAsync(recoveryUsername))?.Enabled != false)
+    throw new Exception("Uncredentialed admin must not be enabled or transition state.");
+Console.WriteLine("PASS uncredentialed admin activation fails closed");
+
+var activateName = "admin-activation-" + Guid.NewGuid().ToString("N")[..12];
+var activateEmail = activateName + "@example.invalid";
+var activateReservation = await store.ReserveAsync(activateName, activateEmail, actor);
+await keycloak.CreateDisabledAdminCandidateAsync(activateName, activateEmail, activateReservation.Id);
+await store.MarkReconciliationRequiredAsync(activateReservation.Id);
+var activateUser = await keycloak.FindProvisionedUserAsync(activateName)
+    ?? throw new Exception("Missing activation test candidate.");
+await store.BindVerifiedSubjectAsync(
+    activateReservation.Id, activateName, activateEmail, actor, activateUser.Id);
+await store.MarkPreparedAsync(activateReservation.Id, activateUser.Id);
+if ((await roleCoordinator.AssignAsync(activateReservation.Id))?.State != "role_assigned")
+    throw new Exception("Activation fixture role assignment failed.");
+await keycloak.SetInitialPasswordAsync(activateUser.Id, "CI-Only-Activation-2026!");
+await VerifyTestEmailAsync(activateUser.Id, activateName, activateEmail, activateReservation.Id);
+if ((await activationReadiness.CheckAsync(activateReservation.Id))?.Ready != true)
+    throw new Exception("Verified CI candidate must pass real Keycloak activation readiness.");
+await using (var held = await lockManager.TryAcquireAsync(activateReservation.Id)
+    ?? throw new Exception("Could not hold activation lease."))
+{
+    var blocked = false;
+    try { await activator.ActivateAsync(activateReservation.Id); }
+    catch (AdminProvisioningBusyException) { blocked = true; }
+    if (!blocked || (await store.GetAsync(activateReservation.Id))?.State != "role_assigned")
+        throw new Exception("Concurrent activation must not mutate state.");
+}
+var activated = await activator.ActivateAsync(activateReservation.Id);
+if (activated?.State != "active" || !activated.Transitioned ||
+    (await keycloak.FindProvisionedUserAsync(activateName))?.Enabled != true)
+    throw new Exception("Verified admin activation failed.");
+var repeatActivation = await activator.ActivateAsync(activateReservation.Id);
+if (repeatActivation?.Transitioned != false || repeatActivation.State != "active")
+    throw new Exception("Verified active admin should be idempotent.");
+var activationEvents = await store.GetAuditAsync(activateReservation.Id);
+if (!activationEvents.Select(e => e.EventType).TakeLast(2)
+    .SequenceEqual(["activation_pending", "active"]))
+    throw new Exception("Activation intent and confirmation must be audited.");
+Console.WriteLine("PASS verified activation, exclusive role, lease, idempotence and audit");
+
+// Simulate Keycloak enabling a verified candidate while the HTTP response is lost.
+// A retry must adopt only a previously persisted activation_pending intent.
+var ambiguousActivationName = "admin-enable-retry-" + Guid.NewGuid().ToString("N")[..12];
+var ambiguousActivationEmail = ambiguousActivationName + "@example.invalid";
+var ambiguousActivation = await store.ReserveAsync(
+    ambiguousActivationName, ambiguousActivationEmail, actor);
+await keycloak.CreateDisabledAdminCandidateAsync(
+    ambiguousActivationName, ambiguousActivationEmail, ambiguousActivation.Id);
+await store.MarkReconciliationRequiredAsync(ambiguousActivation.Id);
+var ambiguousActivationUser = await keycloak.FindProvisionedUserAsync(ambiguousActivationName)
+    ?? throw new Exception("Missing ambiguous activation candidate.");
+await store.BindVerifiedSubjectAsync(ambiguousActivation.Id, ambiguousActivationName,
+    ambiguousActivationEmail, actor, ambiguousActivationUser.Id);
+await store.MarkPreparedAsync(ambiguousActivation.Id, ambiguousActivationUser.Id);
+await roleCoordinator.AssignAsync(ambiguousActivation.Id);
+await keycloak.SetInitialPasswordAsync(ambiguousActivationUser.Id, "CI-Only-Recovery-2026!");
+await VerifyTestEmailAsync(ambiguousActivationUser.Id, ambiguousActivationName,
+    ambiguousActivationEmail, ambiguousActivation.Id);
+await store.MarkActivationPendingAsync(ambiguousActivation.Id, ambiguousActivationUser.Id);
+await keycloak.EnableUserAsync(ambiguousActivationUser.Id);
+var recoveredActivation = await activator.ActivateAsync(ambiguousActivation.Id);
+if (recoveredActivation?.State != "active" || !recoveredActivation.Transitioned)
+    throw new Exception("Ambiguous enable response was not reconciled.");
+Console.WriteLine("PASS ambiguous Keycloak enable response reconciles only durable intent");
+
+static async Task VerifyTestEmailAsync(
+    string subject, string username, string email, Guid reservationId)
+{
+    // Isolated CI fixture only: production APIs must never mark email verified.
+    var admin = Environment.GetEnvironmentVariable("ORYVA_TEST_KEYCLOAK_ADMIN")
+        ?? throw new InvalidOperationException("Missing CI Keycloak administrator.");
+    var password = Environment.GetEnvironmentVariable("ORYVA_TEST_KEYCLOAK_PASSWORD")
+        ?? throw new InvalidOperationException("Missing CI Keycloak password.");
+    using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
+    using var tokenResponse = await client.PostAsync(
+        "http://127.0.0.1:8080/realms/master/protocol/openid-connect/token",
+        new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["grant_type"] = "password",
+            ["client_id"] = "admin-cli",
+            ["username"] = admin,
+            ["password"] = password
+        }));
+    tokenResponse.EnsureSuccessStatusCode();
+    var tokenJson = await tokenResponse.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+    var token = tokenJson.GetProperty("access_token").GetString()
+        ?? throw new Exception("CI admin token missing.");
+    using var update = new HttpRequestMessage(HttpMethod.Put,
+        "http://127.0.0.1:8080/admin/realms/oryva/users/" + Uri.EscapeDataString(subject));
+    update.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+        "Bearer", token);
+    update.Content = System.Net.Http.Json.JsonContent.Create(new
+    {
+        username, email, enabled = false, emailVerified = true,
+        requiredActions = Array.Empty<string>(),
+        attributes = new Dictionary<string, string[]>
+        {
+            ["oryva.provisioning.id"] = [reservationId.ToString("D")]
+        }
+    });
+    using var response = await client.SendAsync(update);
+    response.EnsureSuccessStatusCode();
+}
