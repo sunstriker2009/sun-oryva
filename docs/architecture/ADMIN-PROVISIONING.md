@@ -123,8 +123,16 @@ PostgreSQL advisory locks do not fence independent Keycloak administrators. Rest
 - [x] Admin reservation, ownership checks, recovery, audit, role assignment and guarded activation
 - [x] Active-admin PostgreSQL runtime authorization
 - [ ] Secure invitation and credential enrollment (no CI-only email verification in production)
-- [ ] Admin deactivation and durable revocation
+- [x] Admin deactivation and durable revocation
 - [ ] Master-managed viewer provisioning and viewer revocation
 - [ ] Admin-managed viewer activation/deactivation, with master oversight
 - [ ] Password change/recovery and session revocation
 - [ ] Production rate limiting, error normalization, secret rotation, migration deployment, operational security and final E2E release gate
+
+## Database-first admin deactivation and session revocation (M4)
+
+Apply `infrastructure/postgres/006_admin_deactivation.sql` after migration 005. The active-master-only `POST /api/master/admins/provisioning/{id}/deactivate` accepts an `active`, `deactivation_pending`, or `deactivated` reservation. It holds the per-reservation PostgreSQL advisory lease. A new revocation commits `deactivation_pending` and an append-only audit event with the **current authenticated master subject** before any Keycloak request. Since runtime `Oryva.Admin` authorization queries for `state = 'active'` on every request, existing signed admin JWTs immediately lose API privileges even if Keycloak is unreachable or the disable request fails.
+
+The coordinator verifies the exact Keycloak subject, username, email and single reservation ownership marker, disables the user when enabled, rereads disabled state, invokes Keycloak's user-session logout endpoint (revoking server sessions and refresh tokens), and verifies disabled state again before committing `deactivated` and its audit event. Ambiguous remote responses leave the database in `deactivation_pending`, which is already denied by runtime authorization; the same master-only endpoint can retry under the lease. Completed deactivations are idempotent. No role is granted, no account is deleted, and deactivation cannot transition back to `active`.
+
+**Operational boundary:** A direct Keycloak administrator can still modify an identity independently, and previously issued JWTs can remain cryptographically valid until expiry. ORYVA's PostgreSQL runtime gate is therefore mandatory for every privileged admin API. Keycloak session logout is defense in depth, not a substitute for the DB gate. This increment does not yet implement viewer revocation, password recovery, or production monitoring of reconciliation-pending accounts.
