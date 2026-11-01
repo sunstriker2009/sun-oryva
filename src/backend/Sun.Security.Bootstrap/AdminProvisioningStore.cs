@@ -229,6 +229,56 @@ public sealed class AdminProvisioningStore(NpgsqlDataSource dataSource)
             throw new InvalidOperationException("Verified admin role mapping transition denied.");
     }
 
+    /// <summary>Commit intent and audit before enabling the external identity.</summary>
+    public async Task MarkActivationPendingAsync(
+        Guid id, string subjectId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(subjectId);
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            WITH changed AS (
+                UPDATE oryva.admin_provisioning
+                SET state = 'activation_pending', updated_at = now()
+                WHERE id = @id AND keycloak_subject_id = @subject
+                  AND state = 'role_assigned'
+                RETURNING id, requested_by_subject
+            )
+            INSERT INTO oryva.admin_provisioning_audit
+                (provisioning_id, event_type, actor_subject)
+            SELECT id, 'activation_pending', requested_by_subject FROM changed
+            RETURNING provisioning_id;
+            """, connection);
+        command.Parameters.AddWithValue("id", id);
+        command.Parameters.AddWithValue("subject", subjectId);
+        if (await command.ExecuteScalarAsync(cancellationToken) is null)
+            throw new InvalidOperationException("Admin activation intent transition denied.");
+    }
+
+    /// <summary>Persist active state only after observing Keycloak enablement.</summary>
+    public async Task MarkActivatedAsync(
+        Guid id, string subjectId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(subjectId);
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            WITH changed AS (
+                UPDATE oryva.admin_provisioning
+                SET state = 'active', updated_at = now()
+                WHERE id = @id AND keycloak_subject_id = @subject
+                  AND state = 'activation_pending'
+                RETURNING id, requested_by_subject
+            )
+            INSERT INTO oryva.admin_provisioning_audit
+                (provisioning_id, event_type, actor_subject)
+            SELECT id, 'active', requested_by_subject FROM changed
+            RETURNING provisioning_id;
+            """, connection);
+        command.Parameters.AddWithValue("id", id);
+        command.Parameters.AddWithValue("subject", subjectId);
+        if (await command.ExecuteScalarAsync(cancellationToken) is null)
+            throw new InvalidOperationException("Verified admin activation transition denied.");
+    }
+
     public async Task MarkReconciliationRequiredAsync(
         Guid id, CancellationToken cancellationToken = default)
     {
