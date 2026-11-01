@@ -18,6 +18,7 @@ builder.Services.AddScoped<AdminProvisioningStore>();
 builder.Services.AddScoped<AdminProvisioningLock>();
 builder.Services.AddScoped<AdminProvisioningReconciler>();
 builder.Services.AddScoped<AdminRoleAssignmentCoordinator>();
+builder.Services.AddScoped<AdminActivationReadiness>();
 builder.Services.AddOryvaKeycloakJwt(new OryvaJwtOptions { Issuer = issuer, Audience = audience });
 builder.Services.AddOryvaActiveMasterPolicy();
 builder.Services.AddOryvaRolePolicies();
@@ -103,6 +104,23 @@ if (managementConfigured)
         catch (AdminProvisioningBusyException)
         {
             return Results.Conflict(new { error = "Provisioning recovery already in progress." });
+        }
+    }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
+
+    // Read-only preflight. The result is never an authorization token and
+    // cannot enable an account; activation must repeat all checks.
+    app.MapGet("/api/master/admins/provisioning/{id:guid}/activation-readiness", async (
+        Guid id, AdminActivationReadiness readiness,
+        CancellationToken cancellationToken) =>
+    {
+        try
+        {
+            var result = await readiness.CheckAsync(id, cancellationToken);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        }
+        catch (AdminProvisioningBusyException)
+        {
+            return Results.Conflict(new { error = "Provisioning operation already in progress." });
         }
     }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
 
