@@ -176,6 +176,32 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
             .Distinct(StringComparer.Ordinal).ToArray();
     }
 
+    /// <summary>
+    /// Returns effective realm roles, including composite and inherited mappings.
+    /// Used as a second guard after checking direct ORYVA assignments.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> GetEffectiveOryvaRolesAsync(
+        string subjectId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(subjectId);
+        options.Validate();
+        var token = await GetTokenAsync(cancellationToken);
+        using var request = new HttpRequestMessage(HttpMethod.Get,
+            new Uri(options.BaseAddress,
+                $"admin/realms/{Uri.EscapeDataString(options.Realm)}/users/{Uri.EscapeDataString(subjectId)}/role-mappings/realm/composite"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var response = await http.SendAsync(request, cancellationToken);
+        KeycloakHttpClientFactory.EnsureNoRedirect(response);
+        response.EnsureSuccessStatusCode();
+        var roles = await response.Content.ReadFromJsonAsync<List<KeycloakRealmRole>>(cancellationToken)
+            ?? throw new InvalidOperationException("Missing Keycloak effective role mapping response.");
+        if (roles.Any(role => string.IsNullOrWhiteSpace(role.Name)))
+            throw new InvalidOperationException("Malformed Keycloak effective role mapping response.");
+        return roles.Select(role => role.Name)
+            .Where(name => name is "master" or "admin" or "viewer")
+            .Distinct(StringComparer.Ordinal).ToArray();
+    }
+
     /// <summary>Creates a disabled user with deployment ownership metadata.</summary>
     public async Task CreateDisabledOwnedUserAsync(
         string username, string email, string ownershipMarker,

@@ -110,6 +110,11 @@ if (managementConfigured)
             created.Id, cancellationToken);
         if (existingRoles.Count != 0)
             throw new InvalidOperationException("Admin candidate already has an ORYVA realm role.");
+        var effectiveRoles = await management.GetEffectiveOryvaRolesAsync(
+            created.Id, cancellationToken);
+        if (effectiveRoles.Count != 0)
+            throw new InvalidOperationException(
+                "Admin candidate inherits an ORYVA realm role; preparation denied.");
         await reservations.BindVerifiedSubjectAsync(
             reservation.Id, input.Username, input.Email, actor, created.Id, cancellationToken);
         await reservations.MarkPreparedAsync(reservation.Id, created.Id, cancellationToken);
