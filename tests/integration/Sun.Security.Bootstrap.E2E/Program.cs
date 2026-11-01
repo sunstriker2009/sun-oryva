@@ -124,6 +124,119 @@ await using (var webApp = webBuilder.Build())
     Console.WriteLine("PASS M2 HTTP middleware: 401 anonymous, 403 role/subject mismatch, 200 active master");
     await webApp.StopAsync();
 }
+
+// The bootstrap intentionally leaves email unverified. For this isolated
+// direct-grant E2E, finish the test identity's required actions via the
+// restricted CI management service account. Never do this in production.
+using (var adminHttp = new HttpClient())
+{
+    var adminTokenUrl = "http://127.0.0.1:8080/realms/oryva/protocol/openid-connect/token";
+    using var adminGrant = new FormUrlEncodedContent(new Dictionary<string, string>
+    {
+        ["grant_type"] = "client_credentials",
+        ["client_id"] = "oryva-e2e-bootstrap",
+        ["client_secret"] = secret
+    });
+    using var adminTokenResponse = await adminHttp.PostAsync(adminTokenUrl, adminGrant);
+    adminTokenResponse.EnsureSuccessStatusCode();
+    using var adminJson = System.Text.Json.JsonDocument.Parse(
+        await adminTokenResponse.Content.ReadAsStringAsync());
+    var adminAccessToken = adminJson.RootElement.GetProperty("access_token").GetString();
+    var userUrl = "http://127.0.0.1:8080/admin/realms/oryva/users/" +
+        Uri.EscapeDataString(active.SubjectId);
+    using var getUser = new HttpRequestMessage(HttpMethod.Get, userUrl);
+    getUser.Headers.Authorization =
+        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", adminAccessToken);
+    using var userResponse = await adminHttp.SendAsync(getUser);
+    userResponse.EnsureSuccessStatusCode();
+    using var userJson = System.Text.Json.JsonDocument.Parse(
+        await userResponse.Content.ReadAsStringAsync());
+    var required = userJson.RootElement.TryGetProperty("requiredActions", out var actions)
+        ? actions.ToString() : "[]";
+    Console.WriteLine("CI test master required actions before completion: " + required);
+    using var update = new HttpRequestMessage(HttpMethod.Put, userUrl);
+    update.Headers.Authorization =
+        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", adminAccessToken);
+    update.Content = System.Net.Http.Json.JsonContent.Create(new
+    {
+        emailVerified = true,
+        firstName = "E2E",
+        lastName = "Master",
+        requiredActions = Array.Empty<string>()
+    });
+    using var updateResponse = await adminHttp.SendAsync(update);
+    updateResponse.EnsureSuccessStatusCode();
+}
+
+// Real Keycloak-issued JWT validation through the production bearer middleware.
+// The E2E test client is configured with an audience mapper in setup_keycloak_e2e.py.
+using (var tokenClient = new HttpClient())
+{
+    var tokenUrl = "http://127.0.0.1:8080/realms/oryva/protocol/openid-connect/token";
+    using var tokenRequest = new FormUrlEncodedContent(new Dictionary<string, string>
+    {
+        ["grant_type"] = "password",
+        ["client_id"] = "oryva-e2e-api",
+        ["username"] = username,
+        ["password"] = password
+    });
+    using var tokenResponse = await tokenClient.PostAsync(tokenUrl, tokenRequest);
+    if (!tokenResponse.IsSuccessStatusCode)
+        throw new Exception($"Keycloak test token grant failed ({(int)tokenResponse.StatusCode}): " +
+            await tokenResponse.Content.ReadAsStringAsync());
+    using var tokenJson = System.Text.Json.JsonDocument.Parse(await tokenResponse.Content.ReadAsStringAsync());
+    var token = tokenJson.RootElement.GetProperty("access_token").GetString()
+        ?? throw new Exception("Keycloak returned no access token.");
+
+    // Production requires HTTPS metadata. CI's Keycloak dev container is HTTP;
+    // this E2E-only host overrides discovery transport, never production settings.
+    var jwtBuilder = Microsoft.AspNetCore.Builder.WebApplication.CreateBuilder(
+        new Microsoft.AspNetCore.Builder.WebApplicationOptions { EnvironmentName = "Development" });
+    jwtBuilder.WebHost.UseTestServer();
+    jwtBuilder.Services.AddSingleton(dataSource);
+    jwtBuilder.Services.AddScoped<MasterReservationStore>();
+    jwtBuilder.Services.AddOryvaKeycloakJwt(new OryvaJwtOptions
+    {
+        Issuer = "https://localhost/realms/oryva",
+        Audience = "oryva-api"
+    });
+    jwtBuilder.Services.PostConfigure<Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerOptions>(
+        Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme,
+        options =>
+        {
+            options.Authority = "http://127.0.0.1:8080/realms/oryva";
+            options.MetadataAddress = "http://127.0.0.1:8080/realms/oryva/.well-known/openid-configuration";
+            options.RequireHttpsMetadata = false;
+            options.ConfigurationManager = new Microsoft.IdentityModel.Protocols.ConfigurationManager<Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectConfiguration>(
+                options.MetadataAddress,
+                new Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectConfigurationRetriever(),
+                new Microsoft.IdentityModel.Protocols.HttpDocumentRetriever { RequireHttps = false });
+            options.TokenValidationParameters.ValidIssuer = "http://127.0.0.1:8080/realms/oryva";
+        });
+    jwtBuilder.Services.AddOryvaActiveMasterPolicy();
+    await using var jwtApp = jwtBuilder.Build();
+    jwtApp.UseAuthentication();
+    jwtApp.UseAuthorization();
+    jwtApp.MapGet("/test/jwt-master", () => Results.Ok())
+        .RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
+    await jwtApp.StartAsync();
+    using var jwtHttp = jwtApp.GetTestClient();
+    async Task<System.Net.HttpStatusCode> StatusAsync(string? bearer)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/test/jwt-master");
+        if (bearer is not null)
+            request.Headers.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", bearer);
+        using var response = await jwtHttp.SendAsync(request);
+        return response.StatusCode;
+    }
+    if (await StatusAsync(null) != System.Net.HttpStatusCode.Unauthorized ||
+        await StatusAsync(token + "tampered") != System.Net.HttpStatusCode.Unauthorized ||
+        await StatusAsync(token) != System.Net.HttpStatusCode.OK)
+        throw new Exception("Real Keycloak JWT HTTP authentication failed.");
+    Console.WriteLine("PASS M2 real Keycloak JWT: anonymous/tampered denied, active master allowed");
+    await jwtApp.StopAsync();
+}
 Console.WriteLine("PASS full .NET/Keycloak/PostgreSQL master bootstrap and recovery");
 
 sealed class E2EAuthenticationHandler(

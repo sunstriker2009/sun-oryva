@@ -98,3 +98,37 @@ finally:
     call(f"/admin/realms/oryva/users/{probe_id}", "DELETE", token=token)
 
 print("PASS configured isolated service account")
+
+
+# Dedicated public test client with password grant enabled only for isolated CI.
+# Explicit audience mapper ensures the API's aud validation is exercised.
+api_client = {
+    "clientId": "oryva-e2e-api", "enabled": True, "protocol": "openid-connect",
+    "publicClient": True, "standardFlowEnabled": False,
+    "directAccessGrantsEnabled": True, "fullScopeAllowed": True,
+    "protocolMappers": [{
+        "name": "oryva-api-audience", "protocol": "openid-connect",
+        "protocolMapper": "oidc-audience-mapper",
+        "consentRequired": False,
+        "config": {
+            "included.custom.audience": "oryva-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+        }
+    }]
+}
+status, _ = call("/admin/realms/oryva/clients", "POST",
+                 json.dumps(api_client).encode(), token)
+assert status == 201
+print("PASS dedicated CI JWT client and API audience configured")
+
+
+# Test-only account profile: the bootstrap user is created without an email
+# verification ceremony. Keycloak's VERIFY_EMAIL action blocks direct grants.
+# This is an isolated CI realm, never a production configuration.
+realm_path = "/admin/realms/oryva"
+realm = call(realm_path, token=token)[1]
+realm["verifyEmail"] = False
+status, _ = call(realm_path, "PUT", json.dumps(realm).encode(), token)
+assert status == 204
+print("PASS CI realm disables email verification for isolated direct-grant test")
