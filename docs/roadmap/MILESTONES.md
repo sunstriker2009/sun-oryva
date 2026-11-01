@@ -20,7 +20,8 @@ Updated 2026-11-01. States distinguish merged, tested work from pending PRs.
 - [x] Viewer authorization requires an active database subject (#65)
 - [x] Guarded viewer preparation, exclusive role assignment and recovery by active master/admin (#66, #67)
 - [x] Read-only, locked viewer activation readiness with Keycloak/PostgreSQL E2E ([PR #68](https://github.com/sunstriker2009/sun-oryva/pull/68), verified)
-- [x] Guarded viewer activation with durable recovery and audit ([PR #69](https://github.com/sunstriker2009/sun-oryva/pull/69), PR CI verified)\n- [ ] Database-first viewer revocation by active master/admin
+- [x] Guarded viewer activation with durable recovery and audit ([PR #69](https://github.com/sunstriker2009/sun-oryva/pull/69), PR CI verified)
+- [ ] Database-first viewer revocation by active master/admin
 - [ ] Secure invitations, credential enrollment, password change and recovery
 - [ ] Production-grade audit coverage, rate limiting, least-privilege deployment and observability
 - [ ] Final negative-path and full-stack release validation; package/deployment guidance
