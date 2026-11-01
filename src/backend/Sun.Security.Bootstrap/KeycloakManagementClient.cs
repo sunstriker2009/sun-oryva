@@ -433,4 +433,6 @@ public sealed record KeycloakUser(
     [property: JsonPropertyName("username")] string Username,
     [property: JsonPropertyName("enabled")] bool Enabled,
     [property: JsonPropertyName("attributes")] Dictionary<string, List<string>>? Attributes = null,
-    [property: JsonPropertyName("email")] string? Email = null);
+    [property: JsonPropertyName("email")] string? Email = null,
+    [property: JsonPropertyName("emailVerified")] bool EmailVerified = false,
+    [property: JsonPropertyName("requiredActions")] List<string>? RequiredActions = null);
