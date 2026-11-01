@@ -135,7 +135,7 @@ public sealed class ViewerAccountStore(NpgsqlDataSource dataSource)
         command.Parameters.AddWithValue("actor", actorSubject);
         command.Parameters.AddWithValue("role", actorRole);
         if (await command.ExecuteScalarAsync(cancellationToken) is null)
-            throw new InvalidOperationException("Viewer role assignment transition denied.");
+            throw new InvalidOperationException("Viewer provisioning state transition denied.");
     }
 
     /// <summary>
