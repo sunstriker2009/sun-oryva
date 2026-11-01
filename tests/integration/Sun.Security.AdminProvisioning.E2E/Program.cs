@@ -235,3 +235,40 @@ catch (InvalidOperationException) { deniedExternal = true; }
 if (!deniedExternal || (await store.GetAsync(reservation.Id))?.State != "prepared")
     throw new Exception("Unexpected external role assignment must fail closed.");
 Console.WriteLine("PASS unexpected pre-existing admin role is not adopted");
+
+var ambiguousUsername = "admin-ambiguous-" + Guid.NewGuid().ToString("N")[..12];
+var ambiguousEmail = ambiguousUsername + "@example.invalid";
+var ambiguous = await store.ReserveAsync(ambiguousUsername, ambiguousEmail, actor);
+await keycloak.CreateDisabledAdminCandidateAsync(ambiguousUsername, ambiguousEmail, ambiguous.Id);
+await store.MarkReconciliationRequiredAsync(ambiguous.Id);
+var ambiguousUser = await keycloak.FindProvisionedUserAsync(ambiguousUsername)
+    ?? throw new Exception("Missing ambiguous role candidate.");
+await store.BindVerifiedSubjectAsync(
+    ambiguous.Id, ambiguousUsername, ambiguousEmail, actor, ambiguousUser.Id);
+await store.MarkPreparedAsync(ambiguous.Id, ambiguousUser.Id);
+// Simulate a lost Keycloak response after durable intent and successful mapping.
+await store.MarkRoleAssignmentPendingAsync(ambiguous.Id, ambiguousUser.Id);
+await keycloak.AddAdminRoleMappingAsync(ambiguousUser.Id);
+var reconciledRole = await roleCoordinator.AssignAsync(ambiguous.Id);
+if (reconciledRole?.State != "role_assigned" || !reconciledRole.Transitioned ||
+    (await keycloak.FindProvisionedUserAsync(ambiguousUsername))?.Enabled != false)
+    throw new Exception("Ambiguous role mapping response was not reconciled safely.");
+Console.WriteLine("PASS lost role assignment response reconciled without activation");
+
+var passwordUsername = "admin-credentialed-" + Guid.NewGuid().ToString("N")[..12];
+var passwordEmail = passwordUsername + "@example.invalid";
+var credentialed = await store.ReserveAsync(passwordUsername, passwordEmail, actor);
+await keycloak.CreateDisabledAdminCandidateAsync(passwordUsername, passwordEmail, credentialed.Id);
+await store.MarkReconciliationRequiredAsync(credentialed.Id);
+var credentialedUser = await keycloak.FindProvisionedUserAsync(passwordUsername)
+    ?? throw new Exception("Missing credentialed candidate.");
+await store.BindVerifiedSubjectAsync(
+    credentialed.Id, passwordUsername, passwordEmail, actor, credentialedUser.Id);
+await store.MarkPreparedAsync(credentialed.Id, credentialedUser.Id);
+await keycloak.SetInitialPasswordAsync(credentialedUser.Id, "CI-Only-Password-2026!");
+var credentialDenied = false;
+try { await roleCoordinator.AssignAsync(credentialed.Id); }
+catch (InvalidOperationException) { credentialDenied = true; }
+if (!credentialDenied || (await store.GetAsync(credentialed.Id))?.State != "prepared")
+    throw new Exception("Pre-credentialed candidate must not be promoted.");
+Console.WriteLine("PASS credentialed admin candidate is rejected before role assignment");
