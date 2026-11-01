@@ -68,3 +68,24 @@ Apply `infrastructure/postgres/003_admin_provisioning_audit.sql` after migration
 The table rejects UPDATE, DELETE and TRUNCATE through PostgreSQL triggers (database superusers and privileged operators can still bypass ordinary database controls). `GET /api/master/admins/provisioning/{id}/events` exposes the ordered history to the active master only. Unknown IDs return 404.
 
 **Scope limit:** this records committed PostgreSQL transitions, not every denied attempt or external Keycloak write. Keycloak requests may fail before a transition is recorded. Before privileged admin activation, add explicit audit events for attempted grants, denied actions, ambiguous remote results, credential setup, enablement and revocation. Retention, access monitoring, backups and production database role privileges still require operational policy.
+
+## Guarded, recoverable admin role assignment (M4)
+
+Apply `infrastructure/postgres/004_admin_role_assignment.sql` after migration 003. The active-master-only `POST /api/master/admins/provisioning/{id}/assign-admin-role` requires configured Keycloak management credentials. It accepts only a subject-bound `prepared`, `role_assignment_pending` or `role_assigned` reservation. Unknown IDs return 404, lease contention or rejected preconditions return 409. A successful response reports `role_assigned` but **the identity remains disabled and has no password credential**.
+
+The coordinator holds the same cross-instance PostgreSQL advisory lease as recovery, verifies the canonical Keycloak subject, username, email, exact ownership marker, disabled state, absence of password credentials and direct/effective ORYVA role exclusivity. It commits `role_assignment_pending` and an append-only audit event **before** calling Keycloak. It revalidates immediately before assigning only the `admin` realm role, and records `role_assigned` only after a fresh canonical Keycloak read confirms the exclusive direct and effective `admin` role. If Keycloak's response is lost, the reservation remains pending: a retry under the lease verifies whether the role exists and safely reconciles it, or reissues the mapping only after all checks pass. Unexpected pre-existing roles on a `prepared` candidate are not adopted. The endpoint does not assign `master` or `viewer`, set credentials, enable the user or send invitations.
+
+**External-writer limitation:** the PostgreSQL lease coordinates ORYVA writers, not independent Keycloak administrators. An external change between validation and the Keycloak role mutation cannot be fenced by this mechanism. Production deployment should restrict direct Keycloak management permissions and monitor drift. Any later activation must independently verify identity, password/invitation state, exclusive roles and active-master authorization immediately before enablement. A role-assigned identity is **not** an active admin.
+
+### Remaining backend v1 checklist
+
+- [x] Sole-master bootstrap and end-to-end validation
+- [x] Disabled admin preparation, ownership binding and explicit recovery
+- [x] PostgreSQL advisory locking and append-only provisioning audit
+- [x] Guarded admin role assignment to a disabled, uncredentialed candidate
+- [ ] Secure invitation/credential enrollment and guarded activation
+- [ ] Master-only admin create/deactivate lifecycle and safe revocation
+- [ ] Admin-managed viewer lifecycle, with master override
+- [ ] Password change and recovery paths
+- [ ] Account lifecycle audit, rate limiting and consistent API errors
+- [ ] Deployment migrations, least-privilege operational guidance and final security E2E
