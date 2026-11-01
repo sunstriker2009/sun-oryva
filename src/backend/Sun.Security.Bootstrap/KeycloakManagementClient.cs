@@ -77,6 +77,40 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
     }
 
     /// <summary>
+    /// Creates a disabled ORYVA-owned admin candidate. The ownership marker
+    /// is a reservation UUID, not a secret or authorization credential.
+    /// </summary>
+    public async Task CreateDisabledAdminCandidateAsync(
+        string username, string email, Guid reservationId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentException.ThrowIfNullOrWhiteSpace(email);
+        options.Validate();
+        var token = await GetTokenAsync(cancellationToken);
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            new Uri(options.BaseAddress,
+                $"admin/realms/{Uri.EscapeDataString(options.Realm)}/users"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Content = JsonContent.Create(new
+        {
+            username,
+            email,
+            enabled = false,
+            emailVerified = false,
+            attributes = new Dictionary<string, string[]>
+            {
+                ["oryva.provisioning.id"] = [reservationId.ToString("D")]
+            }
+        });
+        using var response = await http.SendAsync(request, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.Conflict)
+            throw new InvalidOperationException("Keycloak user already exists; reconcile before proceeding.");
+        KeycloakHttpClientFactory.EnsureNoRedirect(response);
+        response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>
     /// Retrieves an exact username and canonical user detail without requiring
     /// the bootstrap-only ownership attribute. Caller verifies provisioning state.
     /// </summary>
