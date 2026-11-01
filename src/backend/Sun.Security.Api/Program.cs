@@ -24,6 +24,7 @@ builder.Services.AddScoped<AdminDeactivationCoordinator>();
 builder.Services.AddScoped<ViewerProvisioningLock>();
 builder.Services.AddScoped<ViewerPreparationCoordinator>();
 builder.Services.AddScoped<ViewerRoleAssignmentCoordinator>();
+builder.Services.AddScoped<ViewerActivationReadiness>();
 builder.Services.AddOryvaKeycloakJwt(new OryvaJwtOptions { Issuer = issuer, Audience = audience });
 builder.Services.AddOryvaActiveMasterPolicy();
 builder.Services.AddOryvaRolePolicies();
@@ -177,6 +178,27 @@ if (managementConfigured)
         catch (InvalidOperationException)
         {
             return Results.Conflict(new { error = "Viewer role assignment pending or rejected; inspect provisioning state." });
+        }
+    }).RequireAuthorization();
+
+    // Read-only viewer activation preflight. This result is not a grant or
+    // authorization token; a future activation operation must recheck all gates.
+    app.MapGet("/api/viewers/provisioning/{id:guid}/activation-readiness", async (
+        Guid id, ViewerActivationReadiness readiness,
+        IAuthorizationService authorization,
+        System.Security.Claims.ClaimsPrincipal principal,
+        CancellationToken cancellationToken) =>
+    {
+        if (await ViewerManagerAuthorization.GetActorRoleAsync(authorization, principal) is null)
+            return Results.Forbid();
+        try
+        {
+            var result = await readiness.CheckAsync(id, cancellationToken);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        }
+        catch (ViewerProvisioningBusyException)
+        {
+            return Results.Conflict(new { error = "Viewer provisioning operation already in progress." });
         }
     }).RequireAuthorization();
 
@@ -372,7 +394,7 @@ if (managementConfigured)
         {
             provisioningId = reservation.Id,
             status = "prepared",
-            nextStep = "Admin role assignment and activation are not yet implemented."
+            nextStep = "Assign the admin role, enroll credentials, then request guarded activation."
         });
     }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
 }
