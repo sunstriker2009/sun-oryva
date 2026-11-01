@@ -300,6 +300,66 @@ public sealed class AdminProvisioningStore(NpgsqlDataSource dataSource)
             throw new InvalidOperationException("Verified admin activation transition denied.");
     }
 
+    /// <summary>
+    /// Immediately revokes runtime authorization in PostgreSQL, before any
+    /// potentially failing Keycloak call. Actor is the authenticated master
+    /// initiating revocation, not the original provisioning actor.
+    /// </summary>
+    public async Task MarkDeactivationPendingAsync(
+        Guid id, string subjectId, string actorSubject,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(subjectId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(actorSubject);
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            WITH changed AS (
+                UPDATE oryva.admin_provisioning
+                SET state = 'deactivation_pending', updated_at = now()
+                WHERE id = @id AND keycloak_subject_id = @subject
+                  AND state = 'active'
+                RETURNING id
+            )
+            INSERT INTO oryva.admin_provisioning_audit
+                (provisioning_id, event_type, actor_subject)
+            SELECT id, 'deactivation_pending', @actor FROM changed
+            RETURNING provisioning_id;
+            """, connection);
+        command.Parameters.AddWithValue("id", id);
+        command.Parameters.AddWithValue("subject", subjectId);
+        command.Parameters.AddWithValue("actor", actorSubject);
+        if (await command.ExecuteScalarAsync(cancellationToken) is null)
+            throw new InvalidOperationException("Admin revocation intent transition denied.");
+    }
+
+    /// <summary>Finalize only after Keycloak disable and session logout succeed.</summary>
+    public async Task MarkDeactivatedAsync(
+        Guid id, string subjectId, string actorSubject,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(subjectId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(actorSubject);
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            WITH changed AS (
+                UPDATE oryva.admin_provisioning
+                SET state = 'deactivated', updated_at = now()
+                WHERE id = @id AND keycloak_subject_id = @subject
+                  AND state = 'deactivation_pending'
+                RETURNING id
+            )
+            INSERT INTO oryva.admin_provisioning_audit
+                (provisioning_id, event_type, actor_subject)
+            SELECT id, 'deactivated', @actor FROM changed
+            RETURNING provisioning_id;
+            """, connection);
+        command.Parameters.AddWithValue("id", id);
+        command.Parameters.AddWithValue("subject", subjectId);
+        command.Parameters.AddWithValue("actor", actorSubject);
+        if (await command.ExecuteScalarAsync(cancellationToken) is null)
+            throw new InvalidOperationException("Admin revocation confirmation transition denied.");
+    }
+
     public async Task MarkReconciliationRequiredAsync(
         Guid id, CancellationToken cancellationToken = default)
     {
