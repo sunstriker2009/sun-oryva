@@ -1,36 +1,47 @@
 # ORYVA Master Development Checklist
 
-**Product:** SUN-001 · **Updated:** 2026-10-30 · **Legend:** [x] completed; [ ] pending. PR links are added when opened.
+**Product:** SUN-001 · **Updated:** 2026-10-31 · **Legend:** [x] merged and verified; [ ] outstanding.
 
-**Technology baseline:** .NET 10+, ASP.NET Core 10+, EF Core 10+ (where applicable), C# 14+. All new SUN product backend development follows this minimum.
+**Baseline:** .NET 10+, ASP.NET Core 10+, C# 14+, Keycloak 26.3.5, PostgreSQL 17. EF Core 10+ where applicable.
 
 ## M0 — foundation
-- [x] ORYVA-001 Product naming and technical namespace approved.
-- [x] ORYVA-002 Ecosystem design-system PR #3 reviewed.
-- [x] ORYVA-003 Architecture direction approved.
-- [x] ORYVA-004 Repository created by owner.
-- [ ] ORYVA-005 Repository governance and branch protection configured.
-- [x] ORYVA-006 Design system migrated and squash-merged in [ORYVA PR #1](https://github.com/sunstriker2009/sun-oryva/pull/1) (source ecosystem PR #3 closed as superseded).
-- [x] ORYVA-007 Architecture documentation and ADRs squash-merged in [ORYVA PR #1](https://github.com/sunstriker2009/sun-oryva/pull/1).
-- [x] ORYVA-008 .NET workspace scaffolded ([PR #3](https://github.com/sunstriker2009/sun-oryva/pull/3), merged).
-- [x] ORYVA-009 TypeScript workspace scaffolded ([PR #3](https://github.com/sunstriker2009/sun-oryva/pull/3), merged).
-- [ ] ORYVA-010 CI quality gates operational (initial build/typecheck workflow merged in [PR #3](https://github.com/sunstriker2009/sun-oryva/pull/3); dependency lockfile, executable tests and additional gates pending).
+- [x] ORYVA-001 Product naming and namespaces approved.
+- [x] ORYVA-002 Design system migrated (PR #1).
+- [x] ORYVA-003 Architecture direction and ADRs documented (PR #1).
+- [x] ORYVA-004 Repository created.
+- [x] ORYVA-005 Main branch protection and required checks configured.
+- [x] ORYVA-006 .NET workspace scaffolded (PR #3).
+- [x] ORYVA-007 TypeScript workspace scaffolded (PR #3).
+- [x] ORYVA-008 CI build and integration workflows operational.
+- [ ] ORYVA-009 Additional release/package quality gates and production smoke tests.
 
-## M1–M5 — implementation
-- [x] ORYVA-011 Docker/Keycloak/PostgreSQL development stack baseline merged in [PR #6](https://github.com/sunstriker2009/sun-oryva/pull/6); runtime smoke test still recommended.
-- [ ] ORYVA-012 Keycloak integration (realm import merged in [PR #7](https://github.com/sunstriker2009/sun-oryva/pull/7); management client and integration tests pending).
-- [ ] ORYVA-013 Idempotent sole-master bootstrap (singleton PostgreSQL schema and recovery design proposed; service and concurrency tests pending).
-- [ ] ORYVA-014 OIDC authentication/session integration.
-- [ ] ORYVA-015 Backend role-based authorization.
-- [ ] ORYVA-016 User administration.
-- [ ] ORYVA-017 Security auditing.
-- [ ] ORYVA-018 Reusable React UI.
-- [ ] ORYVA-019 Consumer integration examples.
-- [ ] ORYVA-020 MarketPilot integration.
+## M1 — sole-master bootstrap
+- [x] ORYVA-010 Keycloak/PostgreSQL development stack and realm baseline.
+- [x] ORYVA-011 Ownership-verified, idempotent master bootstrap and singleton PostgreSQL reservation.
+- [x] ORYVA-012 Distributed provisioning lock and concurrency checks.
+- [x] ORYVA-013 Full-stack Keycloak/PostgreSQL master bootstrap E2E ([PR #36](https://github.com/sunstriker2009/sun-oryva/pull/36)).
+- [ ] ORYVA-014 Production realm user-profile setup for `oryva.bootstrap.owner` and deployment runbook.
 
-**Rule:** A proposed PR does not count as completed until merged and verified. No functional authentication features have been implemented.
+## M2 — authentication and active-master authorization
+- [x] ORYVA-015 Database-backed active-master subject authorization ([PR #37](https://github.com/sunstriker2009/sun-oryva/pull/37)).
+- [x] ORYVA-016 ASP.NET Core active-master authorization policy ([PR #38](https://github.com/sunstriker2009/sun-oryva/pull/38)).
+- [x] ORYVA-017 Keycloak JWT bearer validation ([PR #39](https://github.com/sunstriker2009/sun-oryva/pull/39)).
+- [x] ORYVA-018 Protected API endpoint ([PR #40](https://github.com/sunstriker2009/sun-oryva/pull/40)).
+- [x] ORYVA-019 HTTP middleware authorization tests ([PR #41](https://github.com/sunstriker2009/sun-oryva/pull/41)).
+- [x] ORYVA-020 Real signed Keycloak JWT HTTP E2E ([PR #42](https://github.com/sunstriker2009/sun-oryva/pull/42)).
+- [ ] ORYVA-021 Browser OIDC login/logout, secure session lifecycle and Next.js integration.
 
-## Cross-repository governance
-- [x] SUN ecosystem links to ORYVA via [ecosystem PR #4](https://github.com/sunstriker2009/sun-ecosystem/pull/4), squash-merged.
-- [x] Source [ecosystem PR #3](https://github.com/sunstriker2009/sun-ecosystem/pull/3) closed as superseded, without merging detailed specifications into ecosystem.
-- [x] Product-line merge convention: squash merge PRs; no direct main commits.
+## M3 — role enforcement
+- [ ] ORYVA-022 Admin/viewer policy and authorization matrix.
+- [ ] ORYVA-023 Privilege-escalation, disabled-account and invalid-token E2E coverage.
+
+## M4 — management and audit
+- [ ] ORYVA-024 Master-only admin creation and administration.
+- [ ] ORYVA-025 Master/admin viewer lifecycle management.
+- [ ] ORYVA-026 Password change, security audit events and administration UI.
+
+## M5 — consumer integration
+- [ ] ORYVA-027 Reusable frontend/backend package releases.
+- [ ] ORYVA-028 MarketPilot AI integration and deployment hardening.
+
+**Security invariants:** exactly one active master per deployment; only the master creates admins; master/admin manage viewers; viewers are read-only. Database and validated token subject must match for active-master operations. CI-only password grants and HTTP discovery must never be enabled in production.
