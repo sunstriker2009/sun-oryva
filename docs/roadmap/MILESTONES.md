@@ -19,7 +19,7 @@ Updated 2026-11-01. States distinguish merged, tested work from pending PRs.
 - [x] Admin provisioning append-only audit and PostgreSQL/Keycloak E2E
 - [x] Viewer authorization requires an active database subject (#65)
 - [x] Guarded viewer preparation, exclusive role assignment and recovery by active master/admin (#66, #67)
-- [ ] Read-only, locked viewer activation readiness with Keycloak/PostgreSQL E2E (proposed in current PR; awaiting CI and merge)
+- [x] Read-only, locked viewer activation readiness with Keycloak/PostgreSQL E2E ([PR #68](https://github.com/sunstriker2009/sun-oryva/pull/68), verified)
 - [ ] Guarded viewer activation and database-first revocation by active master/admin
 - [ ] Secure invitations, credential enrollment, password change and recovery
 - [ ] Production-grade audit coverage, rate limiting, least-privilege deployment and observability
