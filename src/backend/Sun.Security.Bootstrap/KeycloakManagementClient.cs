@@ -77,6 +77,16 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
     }
 
     /// <summary>
+    /// Creates an unprivileged disabled viewer candidate with the same
+    /// generic provisioning marker contract used for admin candidates.
+    /// Does not assign roles, credentials or enable the user.
+    /// </summary>
+    public Task CreateDisabledViewerCandidateAsync(
+        string username, string email, Guid reservationId,
+        CancellationToken cancellationToken = default) =>
+        CreateDisabledAdminCandidateAsync(username, email, reservationId, cancellationToken);
+
+    /// <summary>
     /// Creates a disabled ORYVA-owned admin candidate. The ownership marker
     /// is a reservation UUID, not a secret or authorization credential.
     /// </summary>
