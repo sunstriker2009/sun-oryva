@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
+using Sun.Security.Bootstrap;
 
 namespace Sun.Security.AspNetCore;
 
 /// <summary>
-/// Authorization for ordinary realm roles. Master-only operations must always
-/// use Oryva.ActiveMaster, which additionally checks PostgreSQL ownership.
+/// Master operations require Oryva.ActiveMaster. Admin access requires
+/// a validated admin role AND active PostgreSQL provisioning state.
+/// Viewer access accepts an exclusive viewer role or an active admin.
 /// </summary>
 public static class OryvaRolePolicyExtensions
 {
@@ -14,11 +16,13 @@ public static class OryvaRolePolicyExtensions
 
     public static IServiceCollection AddOryvaRolePolicies(this IServiceCollection services)
     {
+        services.AddScoped<ActiveAdminAuthorization>();
+        services.AddScoped<IAuthorizationHandler, OryvaRoleAuthorizationHandler>();
         services.AddAuthorizationBuilder()
             .AddPolicy(Admin, policy => policy.RequireAuthenticatedUser()
-                .RequireClaim("oryva_realm_role", "admin"))
+                .AddRequirements(new OryvaRoleRequirement(false)))
             .AddPolicy(Viewer, policy => policy.RequireAuthenticatedUser()
-                .RequireClaim("oryva_realm_role", "viewer", "admin"));
+                .AddRequirements(new OryvaRoleRequirement(true)));
         return services;
     }
 }
