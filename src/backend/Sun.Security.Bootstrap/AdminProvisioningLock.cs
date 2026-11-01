@@ -108,5 +108,8 @@ public sealed class AdminProvisioningLock(NpgsqlDataSource dataSource)
     }
 }
 
-public sealed class AdminProvisioningBusyException()
-    : InvalidOperationException("Admin provisioning recovery is already in progress.");
+public sealed class AdminProvisioningBusyException : InvalidOperationException
+{
+    public AdminProvisioningBusyException()
+        : base("Admin provisioning recovery is already in progress.") { }
+}
