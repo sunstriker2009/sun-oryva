@@ -93,6 +93,7 @@ var webBuilder = Microsoft.AspNetCore.Builder.WebApplication.CreateBuilder(
 webBuilder.WebHost.UseTestServer();
 webBuilder.Services.AddSingleton(dataSource);
 webBuilder.Services.AddScoped<MasterReservationStore>();
+webBuilder.Services.AddScoped<AdminProvisioningStore>();
 webBuilder.Services.AddAuthentication("E2E")
     .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions,
         E2EAuthenticationHandler>("E2E", _ => { });
