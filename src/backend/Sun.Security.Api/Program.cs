@@ -21,6 +21,7 @@ builder.Services.AddScoped<AdminRoleAssignmentCoordinator>();
 builder.Services.AddScoped<AdminActivationReadiness>();
 builder.Services.AddScoped<AdminActivationCoordinator>();
 builder.Services.AddScoped<AdminDeactivationCoordinator>();
+builder.Services.AddScoped<ViewerPreparationCoordinator>();
 builder.Services.AddOryvaKeycloakJwt(new OryvaJwtOptions { Issuer = issuer, Audience = audience });
 builder.Services.AddOryvaActiveMasterPolicy();
 builder.Services.AddOryvaRolePolicies();
@@ -83,6 +84,62 @@ app.MapGet("/api/viewer/session", (System.Security.Claims.ClaimsPrincipal princi
 // Invitations and self-service enrollment remain separate future operations.
 if (managementConfigured)
 {
+    // Viewer management: only active master or database-active admin may prepare.
+    // Viewer preparation never grants a realm role, credential or access.
+    app.MapPost("/api/viewers/prepare", async (
+        PrepareViewerRequest input, ViewerPreparationCoordinator coordinator,
+        IAuthorizationService authorization,
+        System.Security.Claims.ClaimsPrincipal principal,
+        CancellationToken cancellationToken) =>
+    {
+        var actorRole = await ViewerManagerAuthorization.GetActorRoleAsync(authorization, principal);
+        if (actorRole is null) return Results.Forbid();
+        var subjects = principal.FindAll("sub").Select(x => x.Value).ToArray();
+        if (subjects.Length != 1 || string.IsNullOrWhiteSpace(subjects[0]))
+            return Results.Forbid();
+        if (!AdminPreparationValidation.IsValid(input.Username, input.Email))
+            return Results.BadRequest(new { error = "Valid username and email are required." });
+        try
+        {
+            var result = await coordinator.PrepareAsync(
+                input.Username, input.Email, subjects[0], actorRole, cancellationToken);
+            return Results.Accepted(value: new {
+                provisioningId = result.Id, status = result.State,
+                nextStep = "Viewer role assignment and activation are not implemented."
+            });
+        }
+        catch (ViewerReservationConflictException)
+        {
+            return Results.Conflict(new { error = "Viewer identity already reserved." });
+        }
+        catch (InvalidOperationException)
+        {
+            return Results.Conflict(new {
+                error = "Viewer preparation incomplete; reconcile the reserved identity."
+            });
+        }
+    }).RequireAuthorization();
+
+    app.MapPost("/api/viewers/provisioning/{id:guid}/recover", async (
+        Guid id, ViewerPreparationCoordinator coordinator,
+        IAuthorizationService authorization,
+        System.Security.Claims.ClaimsPrincipal principal,
+        CancellationToken cancellationToken) =>
+    {
+        if (await ViewerManagerAuthorization.GetActorRoleAsync(authorization, principal) is null)
+            return Results.Forbid();
+        try
+        {
+            var result = await coordinator.RecoverAsync(id, cancellationToken);
+            return result is null ? Results.NotFound() :
+                Results.Ok(new { provisioningId = result.Id, status = result.State });
+        }
+        catch (InvalidOperationException)
+        {
+            return Results.Conflict(new { error = "Viewer ownership verification failed." });
+        }
+    }).RequireAuthorization();
+
     // Read-only recovery inspection: no Keycloak mutations or implicit adoption.
     app.MapGet("/api/master/admins/provisioning/{id:guid}", async (
         Guid id, AdminProvisioningReconciler reconciler,
@@ -270,5 +327,6 @@ if (managementConfigured)
 app.Run();
 
 public sealed record PrepareAdminRequest(string Username, string Email);
+public sealed record PrepareViewerRequest(string Username, string Email);
 
 public partial class Program;
