@@ -85,6 +85,15 @@ A candidate can be ready only when PostgreSQL says `role_assigned` and the canon
 
 **Security boundary:** A readiness response is not a reusable approval or capability token. A future activation coordinator must reacquire the lease, revalidate every condition immediately before the Keycloak enable operation, persist durable intent and audit, and reconcile ambiguous responses. Secure invitation and self-service credential enrollment are still outstanding. Do not enable a user solely because a previous readiness check returned true.
 
+
+## Guarded admin activation with durable recovery (M4)
+
+Apply `infrastructure/postgres/005_admin_activation.sql` after migration 004, before exposing activation. The active-master-only `POST /api/master/admins/provisioning/{id}/activate` holds the reservation's PostgreSQL advisory lease, and only accepts `role_assigned`, `activation_pending`, or `active`. For `role_assigned`, it freshly verifies the disabled, marker-owned, subject-bound identity; exclusive direct/effective `admin` role; password credential; verified email; and explicitly empty required actions. It commits `activation_pending` plus an append-only audit event **before** calling Keycloak. It repeats verification before enabling and verifies the resulting enabled identity before committing `active` and its audit event.
+
+If the Keycloak response is lost, the reservation remains `activation_pending`. A retry may reconcile an already-enabled account only if all identity, ownership, credential and role checks still pass. A previously enabled account in `role_assigned` is never adopted. An `active` retry is read-only and requires the same verification. Unknown IDs return 404; contention or failed checks return 409. Neither this endpoint nor the coordinator sets passwords, marks email verified, or sends invitations. Production must provide a separate secure user-controlled enrollment flow before accounts can satisfy readiness. The CI fixture alone simulates email verification using an isolated test administrator.
+
+PostgreSQL advisory locks do not fence independent Keycloak administrators. Restrict direct Keycloak writes and monitor drift. A Keycloak enablement followed by a database outage can leave the account enabled with durable `activation_pending` until reconciliation; do not treat PostgreSQL state alone as proof of the Keycloak login state.
+
 ### Remaining backend v1 checklist
 
 - [x] Sole-master bootstrap and end-to-end validation
@@ -92,7 +101,8 @@ A candidate can be ready only when PostgreSQL says `role_assigned` and the canon
 - [x] PostgreSQL advisory locking and append-only provisioning audit
 - [x] Guarded admin role assignment to a disabled, uncredentialed candidate
 - [x] Read-only, fail-closed admin activation readiness preflight
-- [ ] Secure invitation/credential enrollment and guarded activation
+- [x] Guarded admin activation with durable intent and recovery (CI validation required)
+- [ ] Secure invitation and self-service credential enrollment
 - [ ] Master-only admin create/deactivate lifecycle and safe revocation
 - [ ] Admin-managed viewer lifecycle, with master override
 - [ ] Password change and recovery paths
