@@ -104,13 +104,20 @@ if (managementConfigured)
             markers.Count != 1 ||
             !string.Equals(markers[0], reservation.Id.ToString("D"), StringComparison.Ordinal))
             throw new InvalidOperationException("Keycloak provisioning ownership could not be verified.");
+        if (!string.Equals(created.Email, input.Email, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Keycloak provisioning email mismatch.");
+        var existingRoles = await management.GetDirectOryvaRolesAsync(
+            created.Id, cancellationToken);
+        if (existingRoles.Count != 0)
+            throw new InvalidOperationException("Admin candidate already has an ORYVA realm role.");
         await reservations.BindVerifiedSubjectAsync(
             reservation.Id, input.Username, input.Email, actor, created.Id, cancellationToken);
+        await reservations.MarkPreparedAsync(reservation.Id, created.Id, cancellationToken);
         return Results.Accepted(value: new
         {
             provisioningId = reservation.Id,
-            status = "reconciliation_required",
-            nextStep = "Verify Keycloak ownership before role assignment or activation."
+            status = "prepared",
+            nextStep = "Admin role assignment and activation are not yet implemented."
         });
     }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
 }

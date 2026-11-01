@@ -150,6 +150,32 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
         return user;
     }
 
+    /// <summary>
+    /// Reads direct ORYVA realm role assignments for a provisioning candidate.
+    /// Missing, malformed or conflicting role data must fail closed.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> GetDirectOryvaRolesAsync(
+        string subjectId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(subjectId);
+        options.Validate();
+        var token = await GetTokenAsync(cancellationToken);
+        using var request = new HttpRequestMessage(HttpMethod.Get,
+            new Uri(options.BaseAddress,
+                $"admin/realms/{Uri.EscapeDataString(options.Realm)}/users/{Uri.EscapeDataString(subjectId)}/role-mappings/realm"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var response = await http.SendAsync(request, cancellationToken);
+        KeycloakHttpClientFactory.EnsureNoRedirect(response);
+        response.EnsureSuccessStatusCode();
+        var roles = await response.Content.ReadFromJsonAsync<List<KeycloakRealmRole>>(cancellationToken)
+            ?? throw new InvalidOperationException("Missing Keycloak role mapping response.");
+        if (roles.Any(role => string.IsNullOrWhiteSpace(role.Name)))
+            throw new InvalidOperationException("Malformed Keycloak role mapping response.");
+        return roles.Select(role => role.Name)
+            .Where(name => name is "master" or "admin" or "viewer")
+            .Distinct(StringComparer.Ordinal).ToArray();
+    }
+
     /// <summary>Creates a disabled user with deployment ownership metadata.</summary>
     public async Task CreateDisabledOwnedUserAsync(
         string username, string email, string ownershipMarker,
@@ -347,4 +373,5 @@ public sealed record KeycloakUser(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("username")] string Username,
     [property: JsonPropertyName("enabled")] bool Enabled,
-    [property: JsonPropertyName("attributes")] Dictionary<string, List<string>>? Attributes = null);
+    [property: JsonPropertyName("attributes")] Dictionary<string, List<string>>? Attributes = null,
+    [property: JsonPropertyName("email")] string? Email = null);

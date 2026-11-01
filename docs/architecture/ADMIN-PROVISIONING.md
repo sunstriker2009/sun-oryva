@@ -30,3 +30,9 @@ After creating a disabled user, the API fetches the exact username from Keycloak
 Disabled admin candidates are created with the `oryva.provisioning.id` custom Keycloak attribute set to the PostgreSQL reservation UUID. After Keycloak creation, the API fetches canonical user detail and requires the exact single marker to match before binding the subject. Keycloak must permit service-account read/write access to this attribute through its effective user profile; the isolated E2E setup configures it.
 
 The state remains `reconciliation_required` intentionally. Still required: canonical email matching, verifying absence of conflicting roles, an atomic transition to `prepared`, safe retry/recovery, audit events and account lifecycle tests. No role assignment or activation is implemented.
+
+## Prepared-state verification increment
+
+The preparation endpoint now requires canonical Keycloak username, disabled status, exact reservation ownership marker, case-insensitive canonical email match and zero direct ORYVA realm roles before binding the subject and transitioning the PostgreSQL reservation to `prepared`. The transition is conditional on the reserved subject and reconciliation state. This is **not** role assignment or activation.
+
+Still required: handle concurrent external Keycloak mutations, ensure no effective/composite ORYVA roles, recover ambiguous creation failures, audit state transitions, add E2E coverage, and implement a guarded role assignment/activation coordinator.
