@@ -1,6 +1,6 @@
 # M5 — guarded viewer preparation and disabled realm-role assignment
 
-This increment introduces preparation and **guarded role assignment**, not a fully active viewer lifecycle.
+This increment introduces preparation, **guarded role assignment** and read-only activation readiness, not a fully active viewer lifecycle.
 Apply `infrastructure/postgres/007_viewer_authorization.sql` and then
 `infrastructure/postgres/008_viewer_role_assignment.sql` before enabling
 these endpoints. Keycloak must expose the `oryva.provisioning.id` custom user
