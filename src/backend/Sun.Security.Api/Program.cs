@@ -66,8 +66,14 @@ app.MapGet("/api/master/session", (System.Security.Claims.ClaimsPrincipal princi
     Results.Ok(new { subject = principal.FindFirst("sub")?.Value, role = "master" }))
     .RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
 
-// Phase 1 only: prepare a disabled account. Role assignment, activation,
-// invitations and idempotent reconciliation are separate future operations.
+// Demonstrates the active-admin authorization boundary. A validated admin JWT
+// is insufficient unless the exact subject is active in PostgreSQL.
+app.MapGet("/api/admin/session", (System.Security.Claims.ClaimsPrincipal principal) =>
+    Results.Ok(new { subject = principal.FindFirst("sub")?.Value, role = "admin" }))
+    .RequireAuthorization(OryvaRolePolicyExtensions.Admin);
+
+// Administrative provisioning endpoints are guarded by the active-master policy.
+// Invitations and self-service enrollment remain separate future operations.
 if (managementConfigured)
 {
     // Read-only recovery inspection: no Keycloak mutations or implicit adoption.
