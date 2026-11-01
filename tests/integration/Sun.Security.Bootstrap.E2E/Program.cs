@@ -207,7 +207,10 @@ using (var tokenClient = new HttpClient())
             options.Authority = "http://127.0.0.1:8080/realms/oryva";
             options.MetadataAddress = "http://127.0.0.1:8080/realms/oryva/.well-known/openid-configuration";
             options.RequireHttpsMetadata = false;
-            options.ConfigurationManager = null;
+            options.ConfigurationManager = new Microsoft.IdentityModel.Protocols.ConfigurationManager<Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectConfiguration>(
+                options.MetadataAddress,
+                new Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectConfigurationRetriever(),
+                new Microsoft.IdentityModel.Protocols.HttpDocumentRetriever { RequireHttps = false });
             options.TokenValidationParameters.ValidIssuer = "http://127.0.0.1:8080/realms/oryva";
         });
     jwtBuilder.Services.AddOryvaActiveMasterPolicy();
