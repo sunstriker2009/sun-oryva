@@ -93,6 +93,18 @@ await using (var mutation = new NpgsqlCommand(
         throw new Exception("Audit mutation must be rejected by the database.");
 }
 Console.WriteLine("PASS PostgreSQL rejects updates to append-only audit records");
+await using (var auditConnection = await source.OpenConnectionAsync())
+await using (var truncate = new NpgsqlCommand(
+    "TRUNCATE TABLE oryva.admin_provisioning_audit", auditConnection))
+{
+    var blocked = false;
+    try { await truncate.ExecuteNonQueryAsync(); }
+    catch (PostgresException ex) when (ex.SqlState == "P0001") { blocked = true; }
+    if (!blocked)
+        throw new Exception("Audit truncation must be rejected by the database.");
+}
+Console.WriteLine("PASS PostgreSQL rejects truncation of audit history");
+
 
 
 var lockManager = new AdminProvisioningLock(source);
