@@ -21,7 +21,9 @@ builder.Services.AddScoped<AdminRoleAssignmentCoordinator>();
 builder.Services.AddScoped<AdminActivationReadiness>();
 builder.Services.AddScoped<AdminActivationCoordinator>();
 builder.Services.AddScoped<AdminDeactivationCoordinator>();
+builder.Services.AddScoped<ViewerProvisioningLock>();
 builder.Services.AddScoped<ViewerPreparationCoordinator>();
+builder.Services.AddScoped<ViewerRoleAssignmentCoordinator>();
 builder.Services.AddOryvaKeycloakJwt(new OryvaJwtOptions { Issuer = issuer, Audience = audience });
 builder.Services.AddOryvaActiveMasterPolicy();
 builder.Services.AddOryvaRolePolicies();
@@ -105,7 +107,7 @@ if (managementConfigured)
                 input.Username, input.Email, subjects[0], actorRole, cancellationToken);
             return Results.Accepted(value: new {
                 provisioningId = result.Id, status = result.State,
-                nextStep = "Viewer role assignment and activation are not implemented."
+                nextStep = "Assign the viewer role, then complete separate credential enrollment and activation."
             });
         }
         catch (ViewerReservationConflictException)
@@ -146,6 +148,49 @@ if (managementConfigured)
         {
             return Results.Conflict(new { error = "Viewer ownership verification failed." });
         }
+    }).RequireAuthorization();
+
+    // Viewer role assignment requires an active master or database-active admin.
+    // The coordinator persists intent and verifies an exclusively viewer-mapped,
+    // disabled Keycloak candidate. This never activates or credentials an account.
+    app.MapPost("/api/viewers/provisioning/{id:guid}/assign-viewer-role", async (
+        Guid id, ViewerRoleAssignmentCoordinator coordinator,
+        IAuthorizationService authorization,
+        System.Security.Claims.ClaimsPrincipal principal,
+        CancellationToken cancellationToken) =>
+    {
+        var actorRole = await ViewerManagerAuthorization.GetActorRoleAsync(authorization, principal);
+        if (actorRole is null) return Results.Forbid();
+        var subjects = principal.FindAll("sub").Select(x => x.Value).ToArray();
+        if (subjects.Length != 1 || string.IsNullOrWhiteSpace(subjects[0]))
+            return Results.Forbid();
+        try
+        {
+            var result = await coordinator.AssignAsync(
+                id, subjects[0], actorRole, cancellationToken);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        }
+        catch (ViewerProvisioningBusyException)
+        {
+            return Results.Conflict(new { error = "Viewer provisioning operation already in progress." });
+        }
+        catch (InvalidOperationException)
+        {
+            return Results.Conflict(new { error = "Viewer role assignment pending or rejected; inspect provisioning state." });
+        }
+    }).RequireAuthorization();
+
+    app.MapGet("/api/viewers/provisioning/{id:guid}/audit", async (
+        Guid id, ViewerAccountStore accounts,
+        IAuthorizationService authorization,
+        System.Security.Claims.ClaimsPrincipal principal,
+        CancellationToken cancellationToken) =>
+    {
+        if (await ViewerManagerAuthorization.GetActorRoleAsync(authorization, principal) is null)
+            return Results.Forbid();
+        if (await accounts.GetAsync(id, cancellationToken) is null)
+            return Results.NotFound();
+        return Results.Ok(new { provisioningId = id, events = await accounts.GetAuditAsync(id, cancellationToken) });
     }).RequireAuthorization();
 
     // Read-only recovery inspection: no Keycloak mutations or implicit adoption.
