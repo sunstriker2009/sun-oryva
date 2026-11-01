@@ -97,12 +97,17 @@ webBuilder.Services.AddAuthentication("E2E")
     .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions,
         E2EAuthenticationHandler>("E2E", _ => { });
 webBuilder.Services.AddOryvaActiveMasterPolicy();
+webBuilder.Services.AddOryvaRolePolicies();
 await using (var webApp = webBuilder.Build())
 {
     webApp.UseAuthentication();
     webApp.UseAuthorization();
     webApp.MapGet("/test/master", () => Microsoft.AspNetCore.Http.Results.Ok())
         .RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
+    webApp.MapGet("/test/admin", () => Results.Ok())
+        .RequireAuthorization(OryvaRolePolicyExtensions.Admin);
+    webApp.MapGet("/test/viewer", () => Results.Ok())
+        .RequireAuthorization(OryvaRolePolicyExtensions.Viewer);
     await webApp.StartAsync();
     using var client = webApp.GetTestClient();
     async Task ExpectHttpAsync(string? subject, bool master, System.Net.HttpStatusCode expected)
@@ -122,6 +127,28 @@ await using (var webApp = webBuilder.Build())
     await ExpectHttpAsync("wrong-subject", true, System.Net.HttpStatusCode.Forbidden);
     await ExpectHttpAsync(active.SubjectId, true, System.Net.HttpStatusCode.OK);
     Console.WriteLine("PASS M2 HTTP middleware: 401 anonymous, 403 role/subject mismatch, 200 active master");
+    async Task CheckRoleAsync(string route, string? role, System.Net.HttpStatusCode expected)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, route);
+        if (role is not null)
+        {
+            request.Headers.Add("X-E2E-Subject", active.SubjectId);
+            request.Headers.Add("X-E2E-Role", role);
+        }
+        using var response = await client.SendAsync(request);
+        if (response.StatusCode != expected)
+            throw new Exception($"M3 role policy {route}/{role ?? "anonymous"} expected {(int)expected}, got {(int)response.StatusCode}");
+    }
+    await CheckRoleAsync("/test/admin", null, System.Net.HttpStatusCode.Unauthorized);
+    await CheckRoleAsync("/test/viewer", null, System.Net.HttpStatusCode.Unauthorized);
+    await CheckRoleAsync("/test/admin", "viewer", System.Net.HttpStatusCode.Forbidden);
+    await CheckRoleAsync("/test/admin", "master", System.Net.HttpStatusCode.Forbidden);
+    await CheckRoleAsync("/test/admin", "admin", System.Net.HttpStatusCode.OK);
+    await CheckRoleAsync("/test/viewer", "viewer", System.Net.HttpStatusCode.OK);
+    await CheckRoleAsync("/test/viewer", "admin", System.Net.HttpStatusCode.OK);
+    await CheckRoleAsync("/test/viewer", "master", System.Net.HttpStatusCode.Forbidden);
+    Console.WriteLine("PASS M3 HTTP role matrix: anonymous, master, admin, viewer separation");
+
     await webApp.StopAsync();
 }
 
@@ -251,6 +278,8 @@ sealed class E2EAuthenticationHandler(
         var claims = new List<Claim> { new("sub", subject.ToString()) };
         if (Request.Headers.TryGetValue("X-E2E-Master", out var role) && role == "true")
             claims.Add(new Claim("oryva_realm_role", "master"));
+        if (Request.Headers.TryGetValue("X-E2E-Role", out var ordinaryRole))
+            claims.Add(new Claim("oryva_realm_role", ordinaryRole.ToString()));
         var identity = new ClaimsIdentity(claims, Scheme.Name);
         return Task.FromResult(AuthenticateResult.Success(
             new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme.Name)));
