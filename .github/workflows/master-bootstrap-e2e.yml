@@ -78,6 +78,9 @@ jobs:
       - name: Initialize admin activation schema
         run: |
           PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/005_admin_activation.sql
+      - name: Initialize admin deactivation schema
+        run: |
+          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/006_admin_deactivation.sql
       - name: Run admin provisioning PostgreSQL and Keycloak E2E
         run: dotnet run --project tests/integration/Sun.Security.AdminProvisioning.E2E/Sun.Security.AdminProvisioning.E2E.csproj -c Release
       - name: Keycloak logs on failure
