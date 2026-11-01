@@ -14,6 +14,7 @@ var databaseUrl = builder.Configuration["ORYVA_DATABASE_URL"]
 
 builder.Services.AddSingleton(NpgsqlDataSource.Create(databaseUrl));
 builder.Services.AddScoped<MasterReservationStore>();
+builder.Services.AddScoped<AdminProvisioningStore>();
 builder.Services.AddOryvaKeycloakJwt(new OryvaJwtOptions { Issuer = issuer, Audience = audience });
 builder.Services.AddOryvaActiveMasterPolicy();
 builder.Services.AddOryvaRolePolicies();
@@ -66,17 +67,37 @@ if (managementConfigured)
 {
     app.MapPost("/api/master/admins/prepare", async (
         PrepareAdminRequest input, KeycloakManagementClient management,
+        AdminProvisioningStore reservations, System.Security.Claims.ClaimsPrincipal principal,
         CancellationToken cancellationToken) =>
     {
         if (!AdminPreparationValidation.IsValid(input.Username, input.Email))
             return Results.BadRequest(new { error = "Valid username and email are required." });
 
-        await management.CreateDisabledUserAsync(
-            input.Username, input.Email, cancellationToken);
+        var actor = principal.FindFirst("sub")?.Value;
+        if (string.IsNullOrWhiteSpace(actor))
+            return Results.Forbid();
+        var reservation = await reservations.ReserveAsync(
+            input.Username, input.Email, actor, cancellationToken);
+        // Keycloak is an external system: a failed/lost response is ambiguous.
+        // Always mark the reservation for reconciliation before retrying.
+        try
+        {
+            await management.CreateDisabledUserAsync(
+                input.Username, input.Email, cancellationToken);
+        }
+        catch
+        {
+            await reservations.MarkReconciliationRequiredAsync(
+                reservation.Id, CancellationToken.None);
+            throw;
+        }
+        await reservations.MarkReconciliationRequiredAsync(
+            reservation.Id, cancellationToken);
         return Results.Accepted(value: new
         {
-            status = "disabled",
-            nextStep = "Role assignment and activation are not yet implemented."
+            provisioningId = reservation.Id,
+            status = "reconciliation_required",
+            nextStep = "Verify Keycloak ownership before role assignment or activation."
         });
     }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
 }
