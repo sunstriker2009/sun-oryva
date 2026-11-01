@@ -1,6 +1,6 @@
 # ORYVA Master Development Checklist
 
-**Product:** SUN-001 · **Updated:** 2026-10-31 · **Legend:** [x] merged and verified; [ ] outstanding.
+**Product:** SUN-001 · **Updated:** 2026-11-01 · **Legend:** [x] merged and verified; [ ] outstanding.
 
 **Baseline:** .NET 10+, ASP.NET Core 10+, C# 14+, Keycloak 26.3.5, PostgreSQL 17. EF Core 10+ where applicable.
 
@@ -39,6 +39,21 @@
 - [ ] ORYVA-024 Master-only admin creation and administration.
 - [ ] ORYVA-025 Master/admin viewer lifecycle management.
 - [ ] ORYVA-026 Password change, security audit events and administration UI.
+
+### M4 backend implementation ledger
+
+- [x] Reserve unique admin identities in PostgreSQL and create disabled Keycloak candidates with exact provisioning ownership markers.
+- [x] Verify canonical Keycloak subject, email, disabled status, and absence of direct/effective ORYVA roles before marking prepared.
+- [x] Real PostgreSQL/Keycloak E2E coverage for admin preparation, reservation collisions, and ownership ([PR #55](https://github.com/sunstriker2009/sun-oryva/pull/55)).
+- [x] Master-only, read-only reconciliation inspection ([PR #56](https://github.com/sunstriker2009/sun-oryva/pull/56)).
+- [x] Explicit fail-closed recovery of interrupted disabled candidates ([PR #57](https://github.com/sunstriker2009/sun-oryva/pull/57)).
+- [ ] Cross-instance recovery serialization and contention tests (this increment; do not mark merged until CI passes).
+- [ ] Guarded admin role assignment and activation, including ambiguous-response reconciliation and fresh authorization checks.
+- [ ] Admin disable/revoke and viewer creation/deactivation; enforce master-only admin creation.
+- [ ] Password-change and account recovery policies, audit events, API error contracts, rate limits, and full lifecycle security E2E.
+- [ ] Production Keycloak permissions, operational migrations, threat review, release gates and deployment runbooks.
+
+The M4 ledger records partial backend progress; it does **not** mean ORYVA-024 through ORYVA-026 are complete.
 
 ## M5 — consumer integration
 - [ ] ORYVA-027 Reusable frontend/backend package releases.
