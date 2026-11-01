@@ -513,6 +513,68 @@ if (recoveredDeactivation?.State != "deactivated" || !recoveredDeactivation.Tran
     throw new Exception("Interrupted admin deactivation did not reconcile.");
 Console.WriteLine("PASS pending deactivation denies access before Keycloak disable and recovers safely");
 
+// M5: viewer preparation is intentionally disabled/unprivileged and recoverable.
+var viewerStore = new ViewerAccountStore(source);
+var viewerCoordinator = new ViewerPreparationCoordinator(viewerStore, keycloak);
+var viewerName = "viewer-candidate-" + Guid.NewGuid().ToString("N")[..12];
+var viewerEmail = viewerName + "@example.invalid";
+var viewerReservations = await Task.WhenAll(
+    Enumerable.Range(0, 8).Select(async _ =>
+    {
+        try { return await viewerStore.ReserveAsync(viewerName, viewerEmail, actor, "master"); }
+        catch (ViewerReservationConflictException) { return null; }
+    }));
+var viewerAccepted = viewerReservations.Where(x => x is not null).ToArray();
+if (viewerAccepted.Length != 1)
+    throw new Exception("Viewer reservation must admit only one concurrent identity.");
+var viewerReservation = viewerAccepted[0]!;
+try
+{
+    await viewerStore.ReserveAsync(viewerName + "-other", viewerEmail.ToUpperInvariant(), actor, "admin");
+    throw new Exception("Case-insensitive duplicate viewer email accepted.");
+}
+catch (ViewerReservationConflictException) { }
+Console.WriteLine("PASS viewer reservation uniqueness and case-insensitive email conflicts");
+
+await keycloak.CreateDisabledViewerCandidateAsync(viewerName, viewerEmail, viewerReservation.Id);
+var viewerPrepared = await viewerCoordinator.RecoverAsync(viewerReservation.Id);
+if (viewerPrepared?.State != "prepared" ||
+    string.IsNullOrWhiteSpace(viewerPrepared.KeycloakSubjectId) ||
+    await viewerStore.IsActiveViewerSubjectAsync(viewerPrepared.KeycloakSubjectId))
+    throw new Exception("Viewer preparation granted access or did not bind the subject.");
+var viewerKeycloak = await keycloak.FindProvisionedUserAsync(viewerName)
+    ?? throw new Exception("Viewer candidate missing.");
+if (viewerKeycloak.Enabled || viewerKeycloak.EmailVerified ||
+    await keycloak.HasPasswordCredentialAsync(viewerKeycloak.Id) ||
+    (await keycloak.GetDirectOryvaRolesAsync(viewerKeycloak.Id)).Count != 0 ||
+    (await keycloak.GetEffectiveOryvaRolesAsync(viewerKeycloak.Id)).Count != 0)
+    throw new Exception("Viewer preparation unexpectedly granted credentials or privileges.");
+if ((await viewerCoordinator.RecoverAsync(viewerReservation.Id))?.State != "prepared")
+    throw new Exception("Viewer recovery should be idempotent.");
+Console.WriteLine("PASS real Keycloak viewer preparation, disabled ownership and idempotent recovery");
+
+var missingViewerName = "viewer-missing-" + Guid.NewGuid().ToString("N")[..12];
+var missingViewer = await viewerStore.ReserveAsync(
+    missingViewerName, missingViewerName + "@example.invalid", actor, "admin");
+var missingViewerRejected = false;
+try { await viewerCoordinator.RecoverAsync(missingViewer.Id); }
+catch (InvalidOperationException) { missingViewerRejected = true; }
+if (!missingViewerRejected || (await viewerStore.GetAsync(missingViewer.Id))?.State != "reserved")
+    throw new Exception("Missing Keycloak viewer must remain reserved.");
+Console.WriteLine("PASS missing viewer identity is never silently adopted");
+
+var foreignViewerName = "viewer-foreign-" + Guid.NewGuid().ToString("N")[..12];
+var foreignViewer = await viewerStore.ReserveAsync(
+    foreignViewerName, foreignViewerName + "@example.invalid", actor, "admin");
+await keycloak.CreateDisabledViewerCandidateAsync(
+    foreignViewerName, foreignViewer.Email, Guid.NewGuid());
+var foreignRejected = false;
+try { await viewerCoordinator.RecoverAsync(foreignViewer.Id); }
+catch (InvalidOperationException) { foreignRejected = true; }
+if (!foreignRejected || (await viewerStore.GetAsync(foreignViewer.Id))?.State != "reserved")
+    throw new Exception("Unowned Keycloak viewer was adopted.");
+Console.WriteLine("PASS mismatched Keycloak ownership marker cannot prepare viewer");
+
 static async Task VerifyTestEmailAsync(
     string subject, string username, string email, Guid reservationId)
 {
