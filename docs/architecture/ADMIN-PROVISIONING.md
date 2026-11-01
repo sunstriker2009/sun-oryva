@@ -46,3 +46,9 @@ Before marking an admin candidate prepared, the API now checks both direct realm
 `GET /api/master/admins/provisioning/{id}` requires `Oryva.ActiveMaster` and configured Keycloak management credentials. It reports persisted state and whether the current Keycloak identity matches the reservation's username, email, disabled state, ownership marker, bound subject and absence of direct/effective ORYVA roles. Findings include `identity_missing`, `identity_mismatch`, `unexpected_role`, and `verified_disabled_candidate`. Unknown reservation IDs return 404. The endpoint **does not** change state, create users, assign roles, or enable accounts.
 
 A verified inspection is point-in-time, not an activation permit. A future mutating recovery coordinator must serialize per reservation, revalidate all preconditions, and safely handle ambiguous external responses.
+
+## Explicit recovery of interrupted preparation
+
+`POST /api/master/admins/provisioning/{id}/recover` requires the active-master policy. For `reconciliation_required` reservations, it rechecks the existing disabled Keycloak account, ownership marker, email, subject binding and direct/effective ORYVA role absence, then conditionally binds the subject and marks the reservation `prepared`. It never creates, enables, adopts unmarked identities or assigns roles. Missing reservations return 404; unverified candidates return 409. Prepared reservations are inspected without mutation.
+
+Recovery is not a substitute for serialization across independent Keycloak writes. Before admin activation, introduce per-reservation locking and repeat checks at the activation boundary.

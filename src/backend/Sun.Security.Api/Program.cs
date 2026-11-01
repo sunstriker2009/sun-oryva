@@ -75,6 +75,17 @@ if (managementConfigured)
         return result is null ? Results.NotFound() : Results.Ok(result);
     }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
 
+    // Explicit recovery is restricted to the active master. It does not
+    // mutate Keycloak or grant privileges.
+    app.MapPost("/api/master/admins/provisioning/{id:guid}/recover", async (
+        Guid id, AdminProvisioningReconciler reconciler,
+        CancellationToken cancellationToken) =>
+    {
+        var result = await reconciler.RecoverAsync(id, cancellationToken);
+        return result is null ? Results.NotFound() :
+            !result.IdentityVerified ? Results.Conflict(result) : Results.Ok(result);
+    }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
+
     app.MapPost("/api/master/admins/prepare", async (
         PrepareAdminRequest input, KeycloakManagementClient management,
         AdminProvisioningStore reservations, System.Security.Claims.ClaimsPrincipal principal,

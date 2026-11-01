@@ -86,6 +86,28 @@ public sealed class AdminProvisioningStore(NpgsqlDataSource dataSource)
             throw new InvalidOperationException("Provisioning identity binding mismatch.");
     }
 
+    /// <summary>
+    /// Binds a reconciled Keycloak subject to an existing reservation.
+    /// Never changes a different previously bound subject.
+    /// </summary>
+    public async Task BindReconciledSubjectAsync(
+        Guid id, string subjectId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(subjectId);
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            UPDATE oryva.admin_provisioning
+            SET keycloak_subject_id = @subject, updated_at = now()
+            WHERE id = @id AND state = 'reconciliation_required'
+              AND (keycloak_subject_id IS NULL OR keycloak_subject_id = @subject)
+            RETURNING id;
+            """, connection);
+        command.Parameters.AddWithValue("id", id);
+        command.Parameters.AddWithValue("subject", subjectId);
+        if (await command.ExecuteScalarAsync(cancellationToken) is null)
+            throw new InvalidOperationException("Reconciled subject binding denied.");
+    }
+
     /// <summary>Transitions only a subject-bound reservation into prepared state.</summary>
     public async Task MarkPreparedAsync(
         Guid id, string subjectId, CancellationToken cancellationToken = default)

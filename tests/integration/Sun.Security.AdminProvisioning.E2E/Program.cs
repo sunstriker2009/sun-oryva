@@ -85,3 +85,23 @@ var missing = await reconciler.InspectAsync(Guid.NewGuid());
 if (missing is not null)
     throw new Exception("Unknown provisioning reservation must not be adopted.");
 Console.WriteLine("PASS unknown provisioning reservation is not adopted");
+
+var recoveredPrepared = await reconciler.RecoverAsync(reservation.Id);
+if (recoveredPrepared?.State != "prepared" || !recoveredPrepared.IdentityVerified)
+    throw new Exception("Prepared recovery should be read-only and idempotent.");
+Console.WriteLine("PASS prepared recovery is idempotent");
+
+var recoveryUsername = "admin-recovery-" + Guid.NewGuid().ToString("N")[..12];
+var recoveryEmail = recoveryUsername + "@example.invalid";
+var pending = await store.ReserveAsync(recoveryUsername, recoveryEmail, actor);
+await keycloak.CreateDisabledAdminCandidateAsync(recoveryUsername, recoveryEmail, pending.Id);
+await store.MarkReconciliationRequiredAsync(pending.Id);
+var recovery = await reconciler.RecoverAsync(pending.Id);
+if (recovery?.State != "prepared" || !recovery.IdentityVerified)
+    throw new Exception("Interrupted Keycloak creation was not safely reconciled.");
+Console.WriteLine("PASS interrupted creation recovered using verified ownership");
+
+var unknownRecovery = await reconciler.RecoverAsync(Guid.NewGuid());
+if (unknownRecovery is not null)
+    throw new Exception("Unknown reservation was unexpectedly recovered.");
+Console.WriteLine("PASS unknown reservation recovery denied");
