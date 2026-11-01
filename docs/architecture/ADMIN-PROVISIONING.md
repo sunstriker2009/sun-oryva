@@ -24,3 +24,9 @@ The API currently propagates errors on duplicate reservation and Keycloak failur
 ## Canonical subject binding increment
 
 After creating a disabled user, the API fetches the exact username from Keycloak, rereads its canonical user representation, confirms the same subject and disabled state, and binds that subject to the original PostgreSQL reservation. The reservation remains `reconciliation_required`: subject binding is **not** proof of ownership or authorization to promote. Next, introduce a dedicated provisioning ownership marker (separate from the sole-master bootstrap marker), verify it along with email and role state, and add integration tests before any role assignment or enablement.
+
+## Ownership-marker increment
+
+Disabled admin candidates are created with the `oryva.provisioning.id` custom Keycloak attribute set to the PostgreSQL reservation UUID. After Keycloak creation, the API fetches canonical user detail and requires the exact single marker to match before binding the subject. Keycloak must permit service-account read/write access to this attribute through its effective user profile; the isolated E2E setup configures it.
+
+The state remains `reconciliation_required` intentionally. Still required: canonical email matching, verifying absence of conflicting roles, an atomic transition to `prepared`, safe retry/recovery, audit events and account lifecycle tests. No role assignment or activation is implemented.

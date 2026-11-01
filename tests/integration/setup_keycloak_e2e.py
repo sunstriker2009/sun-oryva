@@ -97,6 +97,25 @@ try:
 finally:
     call(f"/admin/realms/oryva/users/{probe_id}", "DELETE", token=token)
 
+# Provisioning metadata must be accepted and visible in canonical user details.
+# Keycloak's effective user profile, not only the imported realm JSON, controls this.
+profile = call(profile_path, token=token)[1]
+attributes = profile.setdefault("attributes", [])
+if not any(a.get("name") == "oryva.provisioning.id" for a in attributes):
+    attributes.append({
+        "name": "oryva.provisioning.id",
+        "multivalued": False,
+        "permissions": {"view": ["admin"], "edit": ["admin"]}
+    })
+    status, _ = call(profile_path, "PUT", json.dumps(profile).encode(), token)
+    assert status == 200
+profile = call(profile_path, token=token)[1]
+assert any(a.get("name") == "oryva.provisioning.id" and
+           "admin" in a.get("permissions", {}).get("view", []) and
+           "admin" in a.get("permissions", {}).get("edit", [])
+           for a in profile.get("attributes", []))
+print("PASS effective Keycloak profile permits admin provisioning ownership marker")
+
 print("PASS configured isolated service account")
 
 
