@@ -73,11 +73,17 @@ public static class OryvaJwtAuthenticationExtensions
                             using var document = JsonDocument.Parse(realmClaims[0].Value);
                             if (document.RootElement.ValueKind == JsonValueKind.Object &&
                                 document.RootElement.TryGetProperty("roles", out var roles) &&
-                                roles.ValueKind == JsonValueKind.Array &&
-                                roles.EnumerateArray().Any(role =>
-                                    role.ValueKind == JsonValueKind.String &&
-                                    role.GetString() == "master"))
-                                identity.AddClaim(new Claim("oryva_realm_role", "master"));
+                                roles.ValueKind == JsonValueKind.Array)
+                            {
+                                foreach (var role in roles.EnumerateArray())
+                                {
+                                    if (role.ValueKind != JsonValueKind.String)
+                                        continue;
+                                    var name = role.GetString();
+                                    if (name is "master" or "admin" or "viewer")
+                                        identity.AddClaim(new Claim("oryva_realm_role", name));
+                                }
+                            }
                         }
                         catch (JsonException)
                         {
