@@ -31,7 +31,7 @@ public sealed class ViewerDeactivationCoordinator(
             // Commit revocation and audit BEFORE contacting Keycloak.
             await lease.EnsureHeldAsync(cancellationToken);
             await accounts.MarkDeactivationPendingAsync(
-                id, state.KeycloakSubjectId, actorSubject, actorRole, cancellationToken);
+                id, state.KeycloakSubjectId!, actorSubject, actorRole, cancellationToken);
             state = state with { State = "deactivation_pending" };
         }
 
