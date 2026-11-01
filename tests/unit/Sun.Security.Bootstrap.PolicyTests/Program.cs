@@ -33,7 +33,84 @@ foreach (var test in cases)
 }
 Console.WriteLine($"Passed {cases.Length} policy cases.");
 
+VerifyViewerActivationReadinessRules();
 await VerifyRoleMappingTransportAsync();
+
+static void VerifyViewerActivationReadinessRules()
+{
+    var id = Guid.NewGuid();
+    var state = new ViewerAccountState(id, "viewer-one", "viewer@example.invalid",
+        "active-master", "master", "viewer-subject", "role_assigned");
+    var owned = new KeycloakUser("viewer-subject", "viewer-one", false,
+        new Dictionary<string, List<string>>
+        {
+            ["oryva.provisioning.id"] = [id.ToString("D")]
+        }, "viewer@example.invalid", true, []);
+    var direct = new[] { "viewer" };
+    var effective = new[] { "viewer" };
+
+    void Expect(string name, ViewerAccountState reservation, KeycloakUser? candidate,
+        IReadOnlyList<string> directRoles, IReadOnlyList<string> effectiveRoles,
+        bool password, bool expectedReady, string expectedFinding)
+    {
+        var result = ViewerActivationReadinessRules.Evaluate(
+            reservation, candidate, directRoles, effectiveRoles, password);
+        if (result.Ready != expectedReady || result.Finding != expectedFinding)
+            throw new Exception($"Viewer activation {name}: got {result.Finding} ({result.Ready}).");
+        Console.WriteLine($"PASS viewer activation readiness: {name}");
+    }
+
+    Expect("verified candidate", state, owned, direct, effective, true, true,
+        "ready_for_guarded_activation");
+    Expect("reserved state", state with { State = "reserved" }, owned, direct,
+        effective, true, false, "role_not_assigned");
+    Expect("pending role", state with { State = "role_assignment_pending" }, owned,
+        direct, effective, true, false, "role_not_assigned");
+    Expect("missing user", state, null, direct, effective, true, false, "identity_mismatch");
+    Expect("enabled early", state, owned with { Enabled = true }, direct, effective,
+        true, false, "identity_mismatch");
+    Expect("wrong subject", state, owned with { Id = "different" }, direct, effective,
+        true, false, "identity_mismatch");
+    Expect("missing bound subject", state with { KeycloakSubjectId = null }, owned,
+        direct, effective, true, false, "identity_mismatch");
+    Expect("wrong username", state, owned with { Username = "another" }, direct,
+        effective, true, false, "identity_mismatch");
+    Expect("wrong email", state, owned with { Email = "other@example.invalid" }, direct,
+        effective, true, false, "identity_mismatch");
+    Expect("wrong ownership", state, owned with
+    {
+        Attributes = new Dictionary<string, List<string>>
+        {
+            ["oryva.provisioning.id"] = [Guid.NewGuid().ToString("D")]
+        }
+    }, direct, effective, true, false, "identity_mismatch");
+    Expect("duplicate ownership markers", state, owned with
+    {
+        Attributes = new Dictionary<string, List<string>>
+        {
+            ["oryva.provisioning.id"] = [id.ToString("D"), id.ToString("D")]
+        }
+    }, direct, effective, true, false, "identity_mismatch");
+    Expect("missing ownership metadata", state, owned with { Attributes = null },
+        direct, effective, true, false, "identity_mismatch");
+    Expect("admin role", state, owned, ["admin"], ["admin"], true, false,
+        "role_mismatch");
+    Expect("inherited admin role", state, owned, direct, ["viewer", "admin"], true,
+        false, "role_mismatch");
+    Expect("missing direct viewer role", state, owned, [], effective, true, false,
+        "role_mismatch");
+    Expect("duplicate direct viewer role", state, owned, ["viewer", "viewer"],
+        effective, true, false, "role_mismatch");
+    Expect("missing password", state, owned, direct, effective, false, false,
+        "password_missing");
+    Expect("unverified email", state, owned with { EmailVerified = false }, direct,
+        effective, true, false, "email_not_verified");
+    Expect("required action", state, owned with { RequiredActions = ["UPDATE_PASSWORD"] },
+        direct, effective, true, false, "required_actions_pending");
+    Expect("missing actions metadata", state, owned with { RequiredActions = null },
+        direct, effective, true, false, "required_actions_pending");
+}
+
 
 static async Task VerifyRoleMappingTransportAsync()
 {
