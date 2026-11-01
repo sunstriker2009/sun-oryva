@@ -6,7 +6,7 @@ The workflow applies migrations in order before running the .NET test runners.
 - `Sun.Security.Bootstrap.E2E`: sole-master bootstrap, signed Keycloak JWT
   verification and active-master/admin/viewer HTTP policy boundaries.
 - `Sun.Security.AdminProvisioning.E2E`: real Keycloak and PostgreSQL admin
-  reservation, recovery, role assignment, activation, deactivation and audit.
+  reservation, recovery, role assignment, activation, deactivation and audit; also real-Keycloak viewer preparation and disabled viewer-role assignment with durable recovery, contention, conflict-role rejection and audit.
 - `Sun.Security.ViewerAuthorization.E2E`: PostgreSQL viewer registry and
   ASP.NET Core TestServer authorization using **test-only claims**. Verifies
   reserved/unknown subject denial, active viewer access, role exclusivity,
