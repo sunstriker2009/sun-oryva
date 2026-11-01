@@ -1,8 +1,9 @@
-# M5 — guarded viewer preparation and disabled realm-role assignment
+# M5 — guarded viewer preparation, role assignment and activation
 
-This increment introduces preparation, **guarded role assignment** and read-only activation readiness, not a fully active viewer lifecycle.
+This increment introduces preparation, **guarded role assignment**, read-only activation readiness and a guarded activation transition. Viewer deactivation, credential enrollment and full account lifecycle are not yet implemented.
 Apply `infrastructure/postgres/007_viewer_authorization.sql` and then
-`infrastructure/postgres/008_viewer_role_assignment.sql` before enabling
+`infrastructure/postgres/008_viewer_role_assignment.sql` and then
+`infrastructure/postgres/009_viewer_activation.sql` before enabling
 these endpoints. Keycloak must expose the `oryva.provisioning.id` custom user
 attribute to the management service account.
 
@@ -100,10 +101,56 @@ The CI integration suite uses isolated test-only credentials to demonstrate
 a positive readiness result without enabling the account. Production
 credential enrollment and verification remain separate, unfinished flows.
 
+## Guarded activation and recovery
+
+`POST /api/viewers/provisioning/{id}/activate` requires an authenticated
+**database-active master or admin**, an exclusive corresponding realm role,
+and exactly one token subject. Viewers, inactive admins and role-only JWTs
+cannot invoke it. The authenticated actor subject and role are written to the
+append-only PostgreSQL audit trail for each activation transition.
+
+Under the same cross-instance advisory lease as preparation and role assignment,
+the coordinator accepts only `role_assigned`, `activation_pending` or `active`.
+For `role_assigned`, it rechecks **all** preflight gates against canonical
+Keycloak state: exact subject, username, email and ownership marker; disabled
+identity; exclusive direct/effective viewer roles; password credential;
+verified email; and an explicitly empty required-actions list. It then commits
+`activation_pending` and its actor audit **before** any Keycloak enablement.
+
+`activation_pending` is never accepted by the viewer authorization query.
+If a Keycloak enablement response is lost, an explicit retry under the lease
+re-reads Keycloak and accepts the enabled identity **only** with that durable
+pending intent and complete ownership/role/credential verification. If still
+disabled, it rechecks the gates before sending enablement and re-reads the
+identity afterward. Only then can a conditional SQL transition commit
+`active` and its audit event atomically. The active state is verified again
+on an idempotent retry; drift fails closed. An externally enabled candidate
+without a prior activation intent is **not** adopted.
+
+The API returns 404 for an unknown ID, 409 for contention, invalid state or
+failed verification, and 200 with `provisioningId`, `state`, and
+`transitioned` for successful activation or verified idempotence. Ambiguous
+Keycloak failures can leave a durable `activation_pending` state requiring
+an explicit retry; no account is silently activated. This API never creates
+credentials, verifies email, sends invitations or bypasses required actions.
+
+Migration `009` extends the constrained viewer states and audit event types.
+It must be applied **after** `008` and before enabling the route. Advisory
+locking does not fence privileged out-of-band Keycloak writers; production
+service-account permissions and monitoring remain essential.
+
+The full-stack CI suite exercises test-only verified viewer enablement,
+uncredentialed rejection, cross-instance lock contention, subject-bound
+conditional transitions, idempotence, actor audit, ambiguous enablement
+reconciliation and rejection of externally enabled accounts. Test fixtures
+use ephemeral Keycloak/PostgreSQL instances and do not activate production
+accounts.
+
 ## Explicitly out of scope
 
-No credential enrollment, email verification, activation, revocation,
-invitation or production account enablement is added.
+No production credential enrollment, email verification, revocation,
+invitation or production account enablement is added. Guarded activation
+requires previously completed external enrollment and verification.
 Before production, extend durable audit coverage to preparation and lifecycle transitions,
 stable error contracts for external Keycloak failures,
 rate limiting and operational recovery. HTTP authorization E2E covers the active-admin and role-conflict branches; active-master management E2E remains outstanding.
