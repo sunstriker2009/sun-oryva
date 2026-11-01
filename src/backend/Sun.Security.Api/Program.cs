@@ -394,7 +394,7 @@ if (managementConfigured)
         {
             provisioningId = reservation.Id,
             status = "prepared",
-            nextStep = "Admin role assignment and activation are not yet implemented."
+            nextStep = "Assign the admin role, enroll credentials, then request guarded activation."
         });
     }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
 }
