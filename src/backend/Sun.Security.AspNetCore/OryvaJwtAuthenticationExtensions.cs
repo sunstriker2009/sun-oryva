@@ -75,14 +75,19 @@ public static class OryvaJwtAuthenticationExtensions
                                 document.RootElement.TryGetProperty("roles", out var roles) &&
                                 roles.ValueKind == JsonValueKind.Array)
                             {
-                                foreach (var role in roles.EnumerateArray())
+                                var assigned = roles.EnumerateArray()
+                                    .Where(role => role.ValueKind == JsonValueKind.String)
+                                    .Select(role => role.GetString())
+                                    .Where(name => name is "master" or "admin" or "viewer")
+                                    .Distinct(StringComparer.Ordinal)
+                                    .ToArray();
+                                if (assigned.Length > 1)
                                 {
-                                    if (role.ValueKind != JsonValueKind.String)
-                                        continue;
-                                    var name = role.GetString();
-                                    if (name is "master" or "admin" or "viewer")
-                                        identity.AddClaim(new Claim("oryva_realm_role", name));
+                                    context.Fail("Conflicting ORYVA realm roles.");
+                                    return Task.CompletedTask;
                                 }
+                                if (assigned.Length == 1)
+                                    identity.AddClaim(new Claim("oryva_realm_role", assigned[0]!));
                             }
                         }
                         catch (JsonException)
