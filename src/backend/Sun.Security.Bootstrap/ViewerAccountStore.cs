@@ -92,6 +92,71 @@ public sealed class ViewerAccountStore(NpgsqlDataSource dataSource)
             throw new InvalidOperationException("Viewer preparation transition denied.");
     }
 
+
+    /// <summary>Persist role-assignment intent and its actor before contacting Keycloak.</summary>
+    public Task MarkRoleAssignmentPendingAsync(
+        Guid id, string subjectId, string actorSubject, string actorRole,
+        CancellationToken cancellationToken = default) =>
+        TransitionRoleAsync(id, subjectId, "prepared", "role_assignment_pending",
+            actorSubject, actorRole, cancellationToken);
+
+    /// <summary>Commit the verified disabled viewer role and append its audit event.</summary>
+    public Task MarkRoleAssignedAsync(
+        Guid id, string subjectId, string actorSubject, string actorRole,
+        CancellationToken cancellationToken = default) =>
+        TransitionRoleAsync(id, subjectId, "role_assignment_pending", "role_assigned",
+            actorSubject, actorRole, cancellationToken);
+
+    private async Task TransitionRoleAsync(
+        Guid id, string subjectId, string expectedState, string nextState,
+        string actorSubject, string actorRole, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(subjectId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(actorSubject);
+        if (actorRole is not ("master" or "admin"))
+            throw new ArgumentException("Only active master or admin can assign viewer roles.", nameof(actorRole));
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            WITH changed AS (
+                UPDATE oryva.viewer_accounts
+                SET state = @next, updated_at = now()
+                WHERE id = @id AND keycloak_subject_id = @subject AND state = @expected
+                RETURNING id
+            )
+            INSERT INTO oryva.viewer_provisioning_audit
+                (provisioning_id, event_type, actor_subject, actor_role)
+            SELECT id, @next, @actor, @role FROM changed
+            RETURNING provisioning_id;
+            """, connection);
+        command.Parameters.AddWithValue("id", id);
+        command.Parameters.AddWithValue("subject", subjectId);
+        command.Parameters.AddWithValue("expected", expectedState);
+        command.Parameters.AddWithValue("next", nextState);
+        command.Parameters.AddWithValue("actor", actorSubject);
+        command.Parameters.AddWithValue("role", actorRole);
+        if (await command.ExecuteScalarAsync(cancellationToken) is null)
+            throw new InvalidOperationException("Viewer role assignment transition denied.");
+    }
+
+    public async Task<IReadOnlyList<ViewerProvisioningAuditEvent>> GetAuditAsync(
+        Guid id, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            SELECT event_id, event_type, actor_subject, actor_role, occurred_at
+            FROM oryva.viewer_provisioning_audit
+            WHERE provisioning_id = @id ORDER BY event_id;
+            """, connection);
+        command.Parameters.AddWithValue("id", id);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var events = new List<ViewerProvisioningAuditEvent>();
+        while (await reader.ReadAsync(cancellationToken))
+            events.Add(new ViewerProvisioningAuditEvent(
+                reader.GetInt64(0), reader.GetString(1), reader.GetString(2),
+                reader.GetString(3), reader.GetFieldValue<DateTime>(4)));
+        return events;
+    }
+
 }
 
 public sealed record ViewerAccountState(
@@ -103,3 +168,6 @@ public sealed class ViewerReservationConflictException : InvalidOperationExcepti
     public ViewerReservationConflictException()
         : base("Viewer username or email is already reserved.") { }
 }
+
+public sealed record ViewerProvisioningAuditEvent(
+    long EventId, string EventType, string ActorSubject, string ActorRole, DateTime OccurredAt);
