@@ -445,6 +445,39 @@ await using (var webApp = webBuilder.Build())
     await webApp.StopAsync();
 }
 
+// Deactivation must deny previously issued admin JWTs before Keycloak I/O.
+var deactivator = new AdminDeactivationCoordinator(store, keycloak, lockManager);
+if (await deactivator.DeactivateAsync(Guid.NewGuid(), actor) is not null)
+    throw new Exception("Unknown admin reservation unexpectedly deactivated.");
+var invalidDeactivation = false;
+try { await deactivator.DeactivateAsync(pending.Id, actor); }
+catch (InvalidOperationException) { invalidDeactivation = true; }
+if (!invalidDeactivation)
+    throw new Exception("Non-active candidate must not be deactivated.");
+await using (var held = await lockManager.TryAcquireAsync(activateReservation.Id)
+    ?? throw new Exception("Could not acquire deactivation contention lease."))
+{
+    var blocked = false;
+    try { await deactivator.DeactivateAsync(activateReservation.Id, actor); }
+    catch (AdminProvisioningBusyException) { blocked = true; }
+    if (!blocked || !await activeAdmins.IsActiveAdminSubjectAsync(activateUser.Id, true))
+        throw new Exception("Contended deactivation must not change active state.");
+}
+var deactivated = await deactivator.DeactivateAsync(activateReservation.Id, actor);
+if (deactivated?.State != "deactivated" || !deactivated.Transitioned ||
+    await activeAdmins.IsActiveAdminSubjectAsync(activateUser.Id, true) ||
+    (await keycloak.FindProvisionedUserAsync(activateName))?.Enabled != false)
+    throw new Exception("Admin deactivation did not revoke database and Keycloak access.");
+var repeatDeactivation = await deactivator.DeactivateAsync(activateReservation.Id, actor);
+if (repeatDeactivation?.Transitioned != false || repeatDeactivation.State != "deactivated")
+    throw new Exception("Admin deactivation retry should be idempotent.");
+var deactivationEvents = (await store.GetAuditAsync(activateReservation.Id)).TakeLast(2).ToArray();
+if (!deactivationEvents.Select(e => e.EventType)
+        .SequenceEqual(["deactivation_pending", "deactivated"]) ||
+    deactivationEvents.Any(e => e.ActorSubject != actor))
+    throw new Exception("Revocation transitions must be audited with master actor.");
+Console.WriteLine("PASS admin deactivation, logout, runtime denial, lock contention, idempotence and audit");
+
 // Simulate Keycloak enabling a verified candidate while the HTTP response is lost.
 // A retry must adopt only a previously persisted activation_pending intent.
 var ambiguousActivationName = "admin-enable-retry-" + Guid.NewGuid().ToString("N")[..12];
@@ -469,6 +502,16 @@ var recoveredActivation = await activator.ActivateAsync(ambiguousActivation.Id);
 if (recoveredActivation?.State != "active" || !recoveredActivation.Transitioned)
     throw new Exception("Ambiguous enable response was not reconciled.");
 Console.WriteLine("PASS ambiguous Keycloak enable response reconciles only durable intent");
+await store.MarkDeactivationPendingAsync(ambiguousActivation.Id, ambiguousActivationUser.Id, actor);
+if (await activeAdmins.IsActiveAdminSubjectAsync(ambiguousActivationUser.Id, true) ||
+    (await keycloak.FindProvisionedUserAsync(ambiguousActivationName))?.Enabled != true)
+    throw new Exception("Durable revocation intent must immediately deny an enabled Keycloak admin.");
+var recoveredDeactivation = await deactivator.DeactivateAsync(ambiguousActivation.Id, actor);
+if (recoveredDeactivation?.State != "deactivated" || !recoveredDeactivation.Transitioned ||
+    (await keycloak.FindProvisionedUserAsync(ambiguousActivationName))?.Enabled != false ||
+    await activeAdmins.IsActiveAdminSubjectAsync(ambiguousActivationUser.Id, true))
+    throw new Exception("Interrupted admin deactivation did not reconcile.");
+Console.WriteLine("PASS pending deactivation denies access before Keycloak disable and recovers safely");
 
 static async Task VerifyTestEmailAsync(
     string subject, string username, string email, Guid reservationId)
