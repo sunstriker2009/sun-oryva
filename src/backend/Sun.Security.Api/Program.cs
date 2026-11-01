@@ -25,6 +25,7 @@ builder.Services.AddScoped<ViewerProvisioningLock>();
 builder.Services.AddScoped<ViewerPreparationCoordinator>();
 builder.Services.AddScoped<ViewerRoleAssignmentCoordinator>();
 builder.Services.AddScoped<ViewerActivationReadiness>();
+builder.Services.AddScoped<ViewerActivationCoordinator>();
 builder.Services.AddOryvaKeycloakJwt(new OryvaJwtOptions { Issuer = issuer, Audience = audience });
 builder.Services.AddOryvaActiveMasterPolicy();
 builder.Services.AddOryvaRolePolicies();
@@ -199,6 +200,37 @@ if (managementConfigured)
         catch (ViewerProvisioningBusyException)
         {
             return Results.Conflict(new { error = "Viewer provisioning operation already in progress." });
+        }
+    }).RequireAuthorization();
+
+    // Activation is a separate privileged mutation, not a readiness result.
+    // The coordinator reacquires the viewer lease, repeats every Keycloak gate,
+    // commits durable intent before enablement and verifies enablement before
+    // granting database-backed viewer access. No credentials are enrolled here.
+    app.MapPost("/api/viewers/provisioning/{id:guid}/activate", async (
+        Guid id, ViewerActivationCoordinator coordinator,
+        IAuthorizationService authorization,
+        System.Security.Claims.ClaimsPrincipal principal,
+        CancellationToken cancellationToken) =>
+    {
+        var actorRole = await ViewerManagerAuthorization.GetActorRoleAsync(authorization, principal);
+        if (actorRole is null) return Results.Forbid();
+        var subjects = principal.FindAll("sub").Select(x => x.Value).ToArray();
+        if (subjects.Length != 1 || string.IsNullOrWhiteSpace(subjects[0]))
+            return Results.Forbid();
+        try
+        {
+            var result = await coordinator.ActivateAsync(
+                id, subjects[0], actorRole, cancellationToken);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        }
+        catch (ViewerProvisioningBusyException)
+        {
+            return Results.Conflict(new { error = "Viewer provisioning operation already in progress." });
+        }
+        catch (InvalidOperationException)
+        {
+            return Results.Conflict(new { error = "Viewer activation pending or rejected; inspect provisioning state." });
         }
     }).RequireAuthorization();
 

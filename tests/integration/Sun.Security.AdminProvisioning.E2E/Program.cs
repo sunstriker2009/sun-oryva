@@ -620,6 +620,25 @@ if (viewerBeforeEnrollment?.Ready != false ||
     throw new Exception("Uncredentialed viewer incorrectly passed readiness.");
 Console.WriteLine("PASS uncredentialed viewer fails real Keycloak activation preflight");
 
+var viewerActivator = new ViewerActivationCoordinator(viewerStore, keycloak, viewerLock);
+if (await viewerActivator.ActivateAsync(Guid.NewGuid(), actor, "master") is not null)
+    throw new Exception("Unknown viewer reservation must not be activated.");
+var rejectedViewerActor = false;
+try { await viewerActivator.ActivateAsync(viewerReservation.Id, actor, "viewer"); }
+catch (ArgumentException) { rejectedViewerActor = true; }
+if (!rejectedViewerActor)
+    throw new Exception("Viewer actors must not activate viewer accounts.");
+var rejectedUncredentialed = false;
+try { await viewerActivator.ActivateAsync(viewerReservation.Id, actor, "admin"); }
+catch (InvalidOperationException) { rejectedUncredentialed = true; }
+if (!rejectedUncredentialed ||
+    (await viewerStore.GetAsync(viewerReservation.Id))?.State != "role_assigned" ||
+    (await keycloak.FindProvisionedUserAsync(viewerName))?.Enabled != false ||
+    await viewerStore.IsActiveViewerSubjectAsync(viewerKeycloak.Id))
+    throw new Exception("Uncredentialed viewer activation must fail before durable intent.");
+Console.WriteLine("PASS unverified viewer, unknown ID and viewer-role actor cannot activate");
+
+
 await using (var held = await viewerLock.TryAcquireAsync(viewerReservation.Id)
     ?? throw new Exception("Could not hold viewer activation preflight lease."))
 {
@@ -656,6 +675,54 @@ if (enrolledViewer?.Ready != true ||
     throw new Exception("Verified viewer preflight must remain disabled and non-authorizing.");
 Console.WriteLine("PASS real credentialed, email-verified viewer is ready but remains disabled and unauthorized");
 
+await using (var held = await viewerLock.TryAcquireAsync(viewerReservation.Id)
+    ?? throw new Exception("Could not hold viewer activation lease."))
+{
+    var blocked = false;
+    try { await viewerActivator.ActivateAsync(viewerReservation.Id, actor, "master"); }
+    catch (ViewerProvisioningBusyException) { blocked = true; }
+    if (!blocked || (await viewerStore.GetAsync(viewerReservation.Id))?.State != "role_assigned")
+        throw new Exception("Contended viewer activation mutated state.");
+}
+var wrongSubjectTransition = false;
+try
+{
+    await viewerStore.MarkActivationPendingAsync(
+        viewerReservation.Id, "wrong-subject", actor, "master");
+}
+catch (InvalidOperationException) { wrongSubjectTransition = true; }
+if (!wrongSubjectTransition)
+    throw new Exception("Viewer activation intent accepted a mismatched subject.");
+var skippedIntent = false;
+try
+{
+    await viewerStore.MarkActivatedAsync(
+        viewerReservation.Id, viewerKeycloak.Id, actor, "master");
+}
+catch (InvalidOperationException) { skippedIntent = true; }
+if (!skippedIntent)
+    throw new Exception("Viewer activation confirmation bypassed durable intent.");
+
+var viewerActivated = await viewerActivator.ActivateAsync(
+    viewerReservation.Id, actor, "admin");
+if (viewerActivated?.State != "active" || !viewerActivated.Transitioned ||
+    (await viewerStore.GetAsync(viewerReservation.Id))?.State != "active" ||
+    (await keycloak.FindProvisionedUserAsync(viewerName))?.Enabled != true ||
+    !await viewerStore.IsActiveViewerSubjectAsync(viewerKeycloak.Id))
+    throw new Exception("Verified viewer activation failed to commit database-backed access.");
+var viewerRepeatActivation = await viewerActivator.ActivateAsync(
+    viewerReservation.Id, actor, "master");
+if (viewerRepeatActivation?.State != "active" || viewerRepeatActivation.Transitioned)
+    throw new Exception("Verified viewer activation must be idempotent.");
+var viewerActivationEvents = (await viewerStore.GetAuditAsync(viewerReservation.Id))
+    .TakeLast(2).ToArray();
+if (!viewerActivationEvents.Select(x => x.EventType)
+        .SequenceEqual(["activation_pending", "active"]) ||
+    viewerActivationEvents.Any(x => x.ActorSubject != actor || x.ActorRole != "admin"))
+    throw new Exception("Viewer activation must record actor-attributed intent and confirmation.");
+Console.WriteLine("PASS guarded viewer activation, advisory lease, conditional SQL, idempotence and audit");
+
+
 
 await using (var auditConnection = await source.OpenConnectionAsync())
 await using (var mutation = new NpgsqlCommand(
@@ -689,6 +756,58 @@ if (recoveredViewerRole?.State != "role_assigned" ||
     await viewerStore.IsActiveViewerSubjectAsync(pendingViewerPrepared.KeycloakSubjectId))
     throw new Exception("Durable pending viewer role was not safely reconciled.");
 Console.WriteLine("PASS interrupted viewer role mapping recovered without activation");
+
+// A successful external enablement with a lost response is not sufficient
+// for authorization until a previously committed intent is reconciled.
+await keycloak.SetInitialPasswordAsync(
+    pendingViewerPrepared.KeycloakSubjectId!, "CI-Only-Viewer-Readiness-2026!");
+await VerifyTestEmailAsync(
+    pendingViewerPrepared.KeycloakSubjectId!, pendingViewerName,
+    pendingViewer.Email, pendingViewer.Id);
+await viewerStore.MarkActivationPendingAsync(
+    pendingViewer.Id, pendingViewerPrepared.KeycloakSubjectId!, actor, "admin");
+await keycloak.EnableUserAsync(pendingViewerPrepared.KeycloakSubjectId!);
+if (await viewerStore.IsActiveViewerSubjectAsync(pendingViewerPrepared.KeycloakSubjectId))
+    throw new Exception("Keycloak enablement without DB commit must not grant viewer access.");
+var recoveredViewerActivation = await viewerActivator.ActivateAsync(
+    pendingViewer.Id, actor, "master");
+if (recoveredViewerActivation?.State != "active" ||
+    !recoveredViewerActivation.Transitioned ||
+    !await viewerStore.IsActiveViewerSubjectAsync(pendingViewerPrepared.KeycloakSubjectId))
+    throw new Exception("Interrupted viewer enablement was not safely reconciled.");
+var recoveredViewerEvents = (await viewerStore.GetAuditAsync(pendingViewer.Id))
+    .TakeLast(2).ToArray();
+if (!recoveredViewerEvents.Select(x => x.EventType)
+        .SequenceEqual(["activation_pending", "active"]) ||
+    recoveredViewerEvents[0].ActorRole != "admin" ||
+    recoveredViewerEvents[1].ActorRole != "master")
+    throw new Exception("Recovered viewer activation must preserve actual actor attribution.");
+Console.WriteLine("PASS ambiguous Keycloak viewer enable response reconciles only durable intent");
+
+// Never adopt an externally enabled account that lacks ORYVA activation intent.
+var externalViewerName = "viewer-external-enable-" + Guid.NewGuid().ToString("N")[..12];
+var externalViewer = await viewerStore.ReserveAsync(
+    externalViewerName, externalViewerName + "@example.invalid", actor, "master");
+await keycloak.CreateDisabledViewerCandidateAsync(
+    externalViewerName, externalViewer.Email, externalViewer.Id);
+var externalPrepared = await viewerCoordinator.RecoverAsync(externalViewer.Id)
+    ?? throw new Exception("External enablement fixture preparation failed.");
+await viewerRoleCoordinator.AssignAsync(externalViewer.Id, actor, "master");
+await keycloak.SetInitialPasswordAsync(
+    externalPrepared.KeycloakSubjectId!, "CI-Only-Viewer-Readiness-2026!");
+await VerifyTestEmailAsync(
+    externalPrepared.KeycloakSubjectId!, externalViewerName,
+    externalViewer.Email, externalViewer.Id);
+await keycloak.EnableUserAsync(externalPrepared.KeycloakSubjectId!);
+var externalEnableRejected = false;
+try { await viewerActivator.ActivateAsync(externalViewer.Id, actor, "master"); }
+catch (InvalidOperationException) { externalEnableRejected = true; }
+if (!externalEnableRejected ||
+    (await viewerStore.GetAsync(externalViewer.Id))?.State != "role_assigned" ||
+    await viewerStore.IsActiveViewerSubjectAsync(externalPrepared.KeycloakSubjectId))
+    throw new Exception("External enablement without durable intent must fail closed.");
+Console.WriteLine("PASS externally enabled viewer cannot bypass durable activation intent");
+
 
 var conflictViewerName = "viewer-role-conflict-" + Guid.NewGuid().ToString("N")[..12];
 var conflictViewer = await viewerStore.ReserveAsync(

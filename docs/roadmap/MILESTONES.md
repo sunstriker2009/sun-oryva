@@ -8,7 +8,7 @@ Updated 2026-11-01. States distinguish merged, tested work from pending PRs.
 | M1 | Keycloak, PostgreSQL, secure sole-master bootstrap | Implemented; full-stack E2E passing |
 | M2 | OIDC/JWT authentication, sessions, ASP.NET Core and Next.js integration | Backend JWT, master policy and signed-token E2E implemented; browser login/logout and frontend integration pending |
 | M3 | Admin/viewer authorization policies and security tests | Active-admin (#63) and active-viewer (#65) PostgreSQL gates merged with HTTP E2E |
-| M4 | User administration, password lifecycle, audit trail, console | Admin activation and DB-first deactivation merged (#62, #64). Viewer preparation (#66), disabled viewer role assignment (#67) and activation readiness preflight implemented; viewer activation/revocation, credential lifecycle, broader audit and console pending |
+| M4 | User administration, password lifecycle, audit trail, console | Admin activation and DB-first deactivation merged (#62, #64). Viewer preparation (#66), disabled viewer role assignment (#67) and activation readiness preflight (#68) merged; guarded viewer activation (#69) implemented with verified PR CI; revocation, credential lifecycle, broader audit and console pending |
 | M5 | MarketPilot integration, operational hardening and package release | Planned |
 
 ## Backend v1 exit checklist
@@ -20,7 +20,8 @@ Updated 2026-11-01. States distinguish merged, tested work from pending PRs.
 - [x] Viewer authorization requires an active database subject (#65)
 - [x] Guarded viewer preparation, exclusive role assignment and recovery by active master/admin (#66, #67)
 - [x] Read-only, locked viewer activation readiness with Keycloak/PostgreSQL E2E ([PR #68](https://github.com/sunstriker2009/sun-oryva/pull/68), verified)
-- [ ] Guarded viewer activation and database-first revocation by active master/admin
+- [x] Guarded viewer activation with durable recovery and audit ([PR #69](https://github.com/sunstriker2009/sun-oryva/pull/69), PR CI verified)
+- [ ] Database-first viewer revocation by active master/admin
 - [ ] Secure invitations, credential enrollment, password change and recovery
 - [ ] Production-grade audit coverage, rate limiting, least-privilege deployment and observability
 - [ ] Final negative-path and full-stack release validation; package/deployment guidance
