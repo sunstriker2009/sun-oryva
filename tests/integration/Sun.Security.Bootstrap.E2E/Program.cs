@@ -143,11 +143,11 @@ await using (var webApp = webBuilder.Build())
     await CheckRoleAsync("/test/viewer", null, System.Net.HttpStatusCode.Unauthorized);
     await CheckRoleAsync("/test/admin", "viewer", System.Net.HttpStatusCode.Forbidden);
     await CheckRoleAsync("/test/admin", "master", System.Net.HttpStatusCode.Forbidden);
-    await CheckRoleAsync("/test/admin", "admin", System.Net.HttpStatusCode.OK);
+    await CheckRoleAsync("/test/admin", "admin", System.Net.HttpStatusCode.Forbidden);
     await CheckRoleAsync("/test/viewer", "viewer", System.Net.HttpStatusCode.OK);
-    await CheckRoleAsync("/test/viewer", "admin", System.Net.HttpStatusCode.OK);
+    await CheckRoleAsync("/test/viewer", "admin", System.Net.HttpStatusCode.Forbidden);
     await CheckRoleAsync("/test/viewer", "master", System.Net.HttpStatusCode.Forbidden);
-    Console.WriteLine("PASS M3 HTTP role matrix: anonymous, master, admin, viewer separation");
+    Console.WriteLine("PASS M3 HTTP role matrix: admin role without active DB reservation denied");
 
     await webApp.StopAsync();
 }
