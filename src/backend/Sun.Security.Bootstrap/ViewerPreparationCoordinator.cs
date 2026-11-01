@@ -7,7 +7,8 @@ namespace Sun.Security.Bootstrap;
 /// No viewer role, credentials, or enablement are granted here.
 /// </summary>
 public sealed class ViewerPreparationCoordinator(
-    ViewerAccountStore accounts, KeycloakManagementClient keycloak)
+    ViewerAccountStore accounts, KeycloakManagementClient keycloak,
+    ViewerProvisioningLock provisioningLock)
 {
     public async Task<ViewerAccountState> PrepareAsync(
         string username, string email, string actorSubject, string actorRole,
@@ -39,6 +40,8 @@ public sealed class ViewerPreparationCoordinator(
     public async Task<ViewerAccountState?> RecoverAsync(
         Guid id, CancellationToken cancellationToken = default)
     {
+        await using var lease = await provisioningLock.TryAcquireAsync(id, cancellationToken)
+            ?? throw new ViewerProvisioningBusyException();
         var state = await accounts.GetAsync(id, cancellationToken);
         if (state is null) return null;
         if (state.State is not ("reserved" or "prepared"))
@@ -63,7 +66,10 @@ public sealed class ViewerPreparationCoordinator(
             throw new InvalidOperationException("Viewer candidate already has roles or credentials.");
 
         if (state.State == "reserved")
+        {
+            await lease.EnsureHeldAsync(cancellationToken);
             await accounts.MarkPreparedAsync(id, user.Id, cancellationToken);
+        }
         var updated = await accounts.GetAsync(id, cancellationToken)
             ?? throw new InvalidOperationException("Viewer reservation disappeared.");
         if (updated.State != "prepared" ||
