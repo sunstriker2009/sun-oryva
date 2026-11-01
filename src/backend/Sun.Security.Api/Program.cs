@@ -82,8 +82,8 @@ if (managementConfigured)
         // Always mark the reservation for reconciliation before retrying.
         try
         {
-            await management.CreateDisabledUserAsync(
-                input.Username, input.Email, cancellationToken);
+            await management.CreateDisabledAdminCandidateAsync(
+                input.Username, input.Email, reservation.Id, cancellationToken);
         }
         catch
         {
@@ -98,8 +98,12 @@ if (managementConfigured)
         // validation is a separate mandatory gate before role assignment.
         var created = await management.FindProvisionedUserAsync(
             input.Username, cancellationToken);
-        if (created is null || created.Enabled || string.IsNullOrWhiteSpace(created.Id))
-            throw new InvalidOperationException("Disabled Keycloak provisioning identity could not be verified.");
+        if (created is null || created.Enabled || string.IsNullOrWhiteSpace(created.Id) ||
+            created.Attributes is null ||
+            !created.Attributes.TryGetValue("oryva.provisioning.id", out var markers) ||
+            markers.Count != 1 ||
+            !string.Equals(markers[0], reservation.Id.ToString("D"), StringComparison.Ordinal))
+            throw new InvalidOperationException("Keycloak provisioning ownership could not be verified.");
         await reservations.BindVerifiedSubjectAsync(
             reservation.Id, input.Username, input.Email, actor, created.Id, cancellationToken);
         return Results.Accepted(value: new
