@@ -26,5 +26,11 @@ CREATE TRIGGER admin_provisioning_audit_append_only
     BEFORE UPDATE OR DELETE ON oryva.admin_provisioning_audit
     FOR EACH ROW EXECUTE FUNCTION oryva.reject_admin_provisioning_audit_mutation();
 
+DROP TRIGGER IF EXISTS admin_provisioning_audit_no_truncate
+    ON oryva.admin_provisioning_audit;
+CREATE TRIGGER admin_provisioning_audit_no_truncate
+    BEFORE TRUNCATE ON oryva.admin_provisioning_audit
+    FOR EACH STATEMENT EXECUTE FUNCTION oryva.reject_admin_provisioning_audit_mutation();
+
 COMMENT ON TABLE oryva.admin_provisioning_audit IS
     'Append-only, transactionally committed ORYVA admin provisioning transitions; never store secrets.';
