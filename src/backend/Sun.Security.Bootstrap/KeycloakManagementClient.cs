@@ -303,6 +303,45 @@ public sealed class KeycloakManagementClient(HttpClient http, KeycloakManagement
     }
 
     /// <summary>
+    /// Disable a previously verified subject. The caller must first commit
+    /// PostgreSQL deactivation intent so access is denied if this call fails.
+    /// </summary>
+    public async Task DisableUserAsync(
+        string subjectId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(subjectId);
+        options.Validate();
+        var token = await GetTokenAsync(cancellationToken);
+        using var request = new HttpRequestMessage(HttpMethod.Put,
+            new Uri(options.BaseAddress,
+                $"admin/realms/{Uri.EscapeDataString(options.Realm)}/users/{Uri.EscapeDataString(subjectId)}"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Content = JsonContent.Create(new { enabled = false });
+        using var response = await http.SendAsync(request, cancellationToken);
+        KeycloakHttpClientFactory.EnsureNoRedirect(response);
+        response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>
+    /// Revoke server-side user sessions and refresh tokens. Previously issued
+    /// stateless JWTs still require PostgreSQL runtime authorization gating.
+    /// </summary>
+    public async Task LogoutUserSessionsAsync(
+        string subjectId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(subjectId);
+        options.Validate();
+        var token = await GetTokenAsync(cancellationToken);
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            new Uri(options.BaseAddress,
+                $"admin/realms/{Uri.EscapeDataString(options.Realm)}/users/{Uri.EscapeDataString(subjectId)}/logout"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var response = await http.SendAsync(request, cancellationToken);
+        KeycloakHttpClientFactory.EnsureNoRedirect(response);
+        response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>
     /// Assigns only the realm-level admin role to an existing identity.
     /// The guarded coordinator must verify reservation ownership, disabled state,
     /// role exclusivity and durable pending state before calling this transport.
