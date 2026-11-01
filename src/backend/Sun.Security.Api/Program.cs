@@ -17,6 +17,7 @@ builder.Services.AddScoped<MasterReservationStore>();
 builder.Services.AddScoped<AdminProvisioningStore>();
 builder.Services.AddScoped<AdminProvisioningLock>();
 builder.Services.AddScoped<AdminProvisioningReconciler>();
+builder.Services.AddScoped<AdminRoleAssignmentCoordinator>();
 builder.Services.AddOryvaKeycloakJwt(new OryvaJwtOptions { Issuer = issuer, Audience = audience });
 builder.Services.AddOryvaActiveMasterPolicy();
 builder.Services.AddOryvaRolePolicies();
@@ -102,6 +103,27 @@ if (managementConfigured)
         catch (AdminProvisioningBusyException)
         {
             return Results.Conflict(new { error = "Provisioning recovery already in progress." });
+        }
+    }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
+
+    // Assign only the admin realm role to a disabled, credentialless, owned
+    // identity. Never enables the user or sends an invitation.
+    app.MapPost("/api/master/admins/provisioning/{id:guid}/assign-admin-role", async (
+        Guid id, AdminRoleAssignmentCoordinator coordinator,
+        CancellationToken cancellationToken) =>
+    {
+        try
+        {
+            var result = await coordinator.AssignAsync(id, cancellationToken);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        }
+        catch (AdminProvisioningBusyException)
+        {
+            return Results.Conflict(new { error = "Provisioning operation already in progress." });
+        }
+        catch (InvalidOperationException)
+        {
+            return Results.Conflict(new { error = "Role assignment rejected; inspect provisioning state." });
         }
     }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
 
