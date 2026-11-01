@@ -76,6 +76,10 @@ public sealed class AdminProvisioningReconciler(
              !string.Equals(state.KeycloakSubjectId, user.Id, StringComparison.Ordinal)))
             return new AdminProvisioningInspection(reservationId, state.State,
                 "identity_mismatch", false);
+        if (state.State is "role_assignment_pending" or "role_assigned" &&
+            await keycloak.HasPasswordCredentialAsync(user.Id, cancellationToken))
+            return new AdminProvisioningInspection(reservationId, state.State,
+                "unexpected_credential", false);
         var direct = await keycloak.GetDirectOryvaRolesAsync(user.Id, cancellationToken);
         var effective = await keycloak.GetEffectiveOryvaRolesAsync(user.Id, cancellationToken);
         var noRole = direct.Count == 0 && effective.Count == 0;
