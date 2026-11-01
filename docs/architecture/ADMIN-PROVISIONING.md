@@ -36,3 +36,7 @@ The state remains `reconciliation_required` intentionally. Still required: canon
 The preparation endpoint now requires canonical Keycloak username, disabled status, exact reservation ownership marker, case-insensitive canonical email match and zero direct ORYVA realm roles before binding the subject and transitioning the PostgreSQL reservation to `prepared`. The transition is conditional on the reserved subject and reconciliation state. This is **not** role assignment or activation.
 
 Still required: handle concurrent external Keycloak mutations, ensure no effective/composite ORYVA roles, recover ambiguous creation failures, audit state transitions, add E2E coverage, and implement a guarded role assignment/activation coordinator.
+
+## Effective-role guard
+
+Before marking an admin candidate prepared, the API now checks both direct realm role mappings and Keycloak's composite/effective realm role mapping endpoint. Any effective `master`, `admin`, or `viewer` role fails closed, including roles inherited from composite mappings. The checks are point-in-time and do not protect against concurrent external Keycloak mutation. Activation must repeat identity, ownership and role checks immediately before changes.
