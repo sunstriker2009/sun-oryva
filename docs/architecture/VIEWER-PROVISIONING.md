@@ -1,4 +1,4 @@
-# M5 — guarded viewer preparation, role assignment and activation
+# M5 — guarded viewer preparation, role assignment, activation and deactivation
 
 This increment introduces preparation, **guarded role assignment**, read-only activation readiness and a guarded activation transition. Credential enrollment and the full account lifecycle are not yet implemented.
 Apply `infrastructure/postgres/007_viewer_authorization.sql` and then
