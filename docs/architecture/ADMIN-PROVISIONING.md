@@ -12,3 +12,11 @@ Required configuration (secrets must come from a secret manager):
 - `ORYVA_KEYCLOAK_MANAGEMENT_CLIENT_SECRET` — dedicated client secret
 
 This is **not** a complete production admin workflow. Before release, add input normalization and uniqueness rules, reconciliation, per-user ownership metadata, least-privilege management permissions, secure invitation/credential setup, exclusive admin-role assignment, activation, revocation, audit logging, rate limits, and end-to-end HTTP tests. Do not use the bootstrap service account as a general-purpose production management account.
+
+## PostgreSQL reservation increment (M4)
+
+Apply `infrastructure/postgres/002_admin_provisioning.sql` through the deployment migration process before exposing the endpoint. The API now reserves the intended username and email in PostgreSQL before calling Keycloak. Duplicate username or case-insensitive email reservations fail closed. A returned `provisioningId` identifies the attempt.
+
+The current Keycloak adapter creates a disabled account **without** an ownership marker or verified subject ID. Accordingly the reservation is deliberately marked `reconciliation_required` even after successful creation; it cannot be treated as proof of Keycloak ownership. A later coordinator must write a Keycloak ownership marker, retrieve and verify the subject, and transition to `prepared` before any role assignment.
+
+The API currently propagates errors on duplicate reservation and Keycloak failures; improve these to stable problem responses in a later increment. No admin role assignment or activation is exposed.
