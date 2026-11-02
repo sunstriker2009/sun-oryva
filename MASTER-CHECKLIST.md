@@ -61,7 +61,7 @@
 - [ ] Secure viewer credential enrollment and invitations; full lifecycle and operational recovery tooling.
 - [x] Atomic viewer preparation completion audit (migration 012, [PR #73](https://github.com/sunstriker2009/sun-oryva/pull/73)); five PR checks passed on `e93f3016`, squash-merged as `237780bd`, and all five post-merge `main` workflows passed, including real Keycloak/PostgreSQL E2E (verified 2026-11-01).
 - [ ] Password-change and account recovery policies, audit events, API error contracts, and full lifecycle security E2E.
-- [ ] PostgreSQL-backed cross-replica management write quotas (migration 013, HTTP and concurrency E2E); implementation PR pending CI and merge. Edge, login, invitation and password-recovery quotas remain separate outstanding work.
+- [x] PostgreSQL-backed cross-replica management write quotas (migration 013, HTTP concurrency, 429 and outage-503 E2E; [PR #75](https://github.com/sunstriker2009/sun-oryva/pull/75), five workflows passed on implementation commit `e8f0e462` before merge). Edge, login, invitation and password-recovery quotas remain outstanding.
 - [x] Process-local management write throttling with authenticated-subject partitioning and HTTP tests ([PR #71](https://github.com/sunstriker2009/sun-oryva/pull/71), verified).
 - [ ] Production Keycloak permissions, operational migrations, threat review, release gates and deployment runbooks.
 
