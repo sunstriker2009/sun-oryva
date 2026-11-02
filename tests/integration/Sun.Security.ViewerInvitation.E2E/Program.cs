@@ -147,9 +147,9 @@ try
     if (initialState != "pending" || queued.ToString().Contains("Token", StringComparison.Ordinal))
         throw new Exception("Outbox receipt was not metadata-only.");
     var firstQueuedToken = encryption.Decrypt(queued.Id, viewer, recipient, firstEnvelope);
-    if (firstQueuedToken.Length != 43 ||
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(firstQueuedToken))) is not string digest)
+    if (firstQueuedToken.Length != 43)
         throw new Exception("Encrypted outbox token could not be recovered.");
+    var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(firstQueuedToken)));
     await using (var connection = await source.OpenConnectionAsync())
     await using (var digestCommand = new NpgsqlCommand("""
         SELECT token_digest FROM oryva.viewer_invitation_challenges WHERE id = @id;
