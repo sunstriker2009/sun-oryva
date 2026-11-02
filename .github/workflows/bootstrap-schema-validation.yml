@@ -478,6 +478,36 @@ jobs:
             END;
           END $lease_schema$;
           SQL
+      - name: Validate SMTP acceptance state and append-only audit migration
+        run: |
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/019_viewer_invitation_smtp_handoff.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/019_viewer_invitation_smtp_handoff.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
+          DO $smtp_schema$
+          BEGIN
+            BEGIN
+              UPDATE oryva.viewer_invitation_outbox
+              SET state = 'sent'
+              WHERE challenge_id = '10000000-0000-0000-0000-000000000001';
+              RAISE EXCEPTION 'SMTP sent without acceptance timestamp accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+          END $smtp_schema$;
+          INSERT INTO oryva.viewer_invitation_delivery_audit
+            (id, challenge_id, event_type, attempt_count)
+          VALUES ('20000000-0000-0000-0000-000000000001',
+                  '10000000-0000-0000-0000-000000000001', 'smtp_accepted', 1);
+          DO $smtp_audit$
+          BEGIN
+            BEGIN
+              UPDATE oryva.viewer_invitation_delivery_audit
+              SET attempt_count = 2;
+              RAISE EXCEPTION 'Mutable delivery audit accepted';
+            EXCEPTION WHEN raise_exception THEN
+              IF SQLERRM <> 'Invitation delivery audit is append-only' THEN RAISE; END IF;
+            END;
+          END $smtp_audit$;
+          SQL
       - name: Verify singleton and state constraints
         run: |
           psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
