@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -45,6 +46,7 @@ app.MapPost("/ceremony", () =>
     protectedCalls++;
     return Results.Ok(new { status = "boundary_only" });
 }).WithMetadata(new OryvaBrowserCeremonyAttribute());
+app.MapGet("/csrf-bootstrap", OryvaBrowserCsrfBootstrap.CreateHandler(origin));
 app.MapPost("/unmarked", () =>
 {
     unmarkedCalls++;
@@ -141,6 +143,116 @@ await CheckAsync("unmarked endpoint unaffected", HttpStatusCode.OK,
 
 if (protectedCalls != 2 || unmarkedCalls != 1)
     throw new Exception("A rejected browser request reached the endpoint handler.");
+
+// The bootstrap route exists only in this isolated TestServer. No production
+// route, browser session, credential grant or Keycloak activation is created.
+async Task<HttpResponseMessage> BootstrapAsync(
+    string scheme = "https", string host = "enroll.oryva.example",
+    string? suppliedOrigin = null, string? fetchSite = "same-origin",
+    bool sendHeader = true, bool duplicateHeader = false,
+    bool forwardedSpoof = false, string query = "")
+{
+    using var request = new HttpRequestMessage(HttpMethod.Get,
+        scheme + "://" + host + "/csrf-bootstrap" + query);
+    request.Headers.Host = host;
+    if (sendHeader)
+        request.Headers.TryAddWithoutValidation(
+            OryvaBrowserCsrfBootstrap.BootstrapHeaderName,
+            duplicateHeader ? new[] { "1", "1" } : new[] { "1" });
+    if (suppliedOrigin is not null)
+        request.Headers.TryAddWithoutValidation("Origin", suppliedOrigin);
+    if (fetchSite is not null)
+        request.Headers.TryAddWithoutValidation("Sec-Fetch-Site", fetchSite);
+    if (forwardedSpoof)
+    {
+        request.Headers.TryAddWithoutValidation("X-Forwarded-Host", "enroll.oryva.example");
+        request.Headers.TryAddWithoutValidation("X-Forwarded-Proto", "https");
+    }
+    return await client.SendAsync(request);
+}
+
+async Task ExpectBootstrapDeniedAsync(string name, HttpResponseMessage response)
+{
+    using (response)
+    {
+        if (response.StatusCode != HttpStatusCode.Forbidden ||
+            response.Headers.Contains("Set-Cookie") ||
+            response.Headers.CacheControl?.NoStore != true)
+            throw new Exception(name + ": unsafe bootstrap denial.");
+        var body = await response.Content.ReadAsStringAsync();
+        if (!body.Contains("browser_request_rejected", StringComparison.Ordinal) ||
+            body.Contains("csrfToken", StringComparison.Ordinal))
+            throw new Exception(name + ": denial disclosed a token.");
+    }
+}
+
+using var bootstrap1 = await BootstrapAsync();
+if (bootstrap1.StatusCode != HttpStatusCode.OK ||
+    bootstrap1.Headers.CacheControl?.NoStore != true ||
+    !bootstrap1.Headers.TryGetValues("Set-Cookie", out var setCookies))
+    throw new Exception("CSRF bootstrap missing cookie or cache protection.");
+var issuedCookie = setCookies.Single();
+using var document1 = JsonDocument.Parse(await bootstrap1.Content.ReadAsStringAsync());
+var issuedToken = document1.RootElement.GetProperty("csrfToken").GetString()!;
+if (issuedToken.Length != 43 ||
+    !issuedCookie.StartsWith(OryvaBrowserRequestGuard.CsrfCookieName + "=" + issuedToken + ";",
+        StringComparison.Ordinal) ||
+    !issuedCookie.Contains("httponly", StringComparison.OrdinalIgnoreCase) ||
+    !issuedCookie.Contains("secure", StringComparison.OrdinalIgnoreCase) ||
+    !issuedCookie.Contains("samesite=strict", StringComparison.OrdinalIgnoreCase) ||
+    !issuedCookie.Contains("path=/", StringComparison.OrdinalIgnoreCase) ||
+    !issuedCookie.Contains("max-age=300", StringComparison.OrdinalIgnoreCase) ||
+    issuedCookie.Contains("domain=", StringComparison.OrdinalIgnoreCase))
+    throw new Exception("CSRF bootstrap cookie violates __Host-/HttpOnly/TTL requirements.");
+
+using var bootstrap2 = await BootstrapAsync(suppliedOrigin: origin);
+using var document2 = JsonDocument.Parse(await bootstrap2.Content.ReadAsStringAsync());
+var secondToken = document2.RootElement.GetProperty("csrfToken").GetString()!;
+if (bootstrap2.StatusCode != HttpStatusCode.OK ||
+    issuedToken == secondToken || secondToken.Length != 43)
+    throw new Exception("CSRF bootstrap failed to mint independent random tokens.");
+
+await CheckAsync("issued CSRF cookie passes POST guard", HttpStatusCode.OK,
+    suppliedCookie: OryvaBrowserRequestGuard.CsrfCookieName + "=" + issuedToken,
+    suppliedCsrf: issuedToken);
+await CheckAsync("issued cookie with mismatched header denied", HttpStatusCode.Forbidden,
+    suppliedCookie: OryvaBrowserRequestGuard.CsrfCookieName + "=" + issuedToken,
+    suppliedCsrf: secondToken);
+if (protectedCalls != 3)
+    throw new Exception("CSRF bootstrap bypassed the opt-in POST guard.");
+
+await ExpectBootstrapDeniedAsync("missing custom header",
+    await BootstrapAsync(sendHeader: false));
+await ExpectBootstrapDeniedAsync("duplicate custom header",
+    await BootstrapAsync(duplicateHeader: true));
+await ExpectBootstrapDeniedAsync("foreign origin",
+    await BootstrapAsync(suppliedOrigin: "https://attacker.example"));
+await ExpectBootstrapDeniedAsync("same-site subdomain",
+    await BootstrapAsync(suppliedOrigin: "https://sub.enroll.oryva.example"));
+await ExpectBootstrapDeniedAsync("cross-site metadata",
+    await BootstrapAsync(fetchSite: "cross-site"));
+await ExpectBootstrapDeniedAsync("same-site metadata",
+    await BootstrapAsync(fetchSite: "same-site"));
+await ExpectBootstrapDeniedAsync("downgraded HTTP",
+    await BootstrapAsync(scheme: "http", forwardedSpoof: true));
+await ExpectBootstrapDeniedAsync("spoofed forwarded host",
+    await BootstrapAsync(host: "attacker.example", forwardedSpoof: true));
+await ExpectBootstrapDeniedAsync("query parameters forbidden",
+    await BootstrapAsync(query: "?token=should-not-be-here"));
+
+foreach (var invalid in new[] { "http://enroll.oryva.example",
+    "https://enroll.oryva.example/path", "https://attacker@example.com" })
+{
+    try
+    {
+        _ = OryvaBrowserCsrfBootstrap.CreateHandler(invalid);
+        throw new Exception("Invalid CSRF bootstrap origin was accepted.");
+    }
+    catch (ArgumentException) { }
+}
+
+Console.WriteLine("PASS opt-in CSRF bootstrap: 256-bit unique token, HttpOnly __Host- cookie, five-minute TTL");
+Console.WriteLine("PASS isolated browser bootstrap GET, origin/host/metadata/HTTPS denial and POST guard round-trip");
 
 await app.StopAsync();
 Console.WriteLine("PASS browser POST HTTPS, exact origin/host, fetch metadata and double-submit CSRF");
