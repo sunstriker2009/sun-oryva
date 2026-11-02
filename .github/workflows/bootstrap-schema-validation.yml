@@ -132,6 +132,63 @@ jobs:
                     'deactivation_pending', 'ci-master', 'master');
           END $viewer_deactivation$;
           SQL
+      - name: Validate atomic viewer reservation audit migration
+        run: |
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/011_viewer_reservation_audit.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/011_viewer_reservation_audit.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
+          WITH created AS (
+            INSERT INTO oryva.viewer_accounts
+              (id, username, email, requested_by_subject, requested_by_role)
+            VALUES ('00000000-0000-0000-0000-000000000003', 'viewer-audited',
+                    'audit@example.invalid', 'test-admin', 'admin')
+            ON CONFLICT DO NOTHING RETURNING id
+          ), audited AS (
+            INSERT INTO oryva.viewer_provisioning_audit
+              (provisioning_id, event_type, actor_subject, actor_role)
+            SELECT id, 'reserved', 'test-admin', 'admin' FROM created
+            RETURNING provisioning_id
+          )
+          SELECT provisioning_id FROM audited;
+          DO $viewer_reservation_audit$
+          BEGIN
+            IF (SELECT count(*) FROM oryva.viewer_provisioning_audit
+                WHERE provisioning_id = '00000000-0000-0000-0000-000000000003'
+                  AND event_type = 'reserved' AND actor_subject = 'test-admin'
+                  AND actor_role = 'admin') <> 1 THEN
+              RAISE EXCEPTION 'viewer reservation audit was not recorded';
+            END IF;
+            BEGIN
+              INSERT INTO oryva.viewer_provisioning_audit
+                (provisioning_id, event_type, actor_subject, actor_role)
+              VALUES ('00000000-0000-0000-0000-000000000003',
+                      'unsafe_invitation_sent', 'test-admin', 'admin');
+              RAISE EXCEPTION 'unknown viewer audit event accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            BEGIN
+              EXECUTE $rollback_sql$
+                WITH created AS (
+                  INSERT INTO oryva.viewer_accounts
+                    (id, username, email, requested_by_subject, requested_by_role)
+                  VALUES ('00000000-0000-0000-0000-000000000004',
+                          'viewer-audit-rollback', 'rollback@example.invalid',
+                          'test-master', 'master')
+                  RETURNING id
+                )
+                INSERT INTO oryva.viewer_provisioning_audit
+                  (provisioning_id, event_type, actor_subject, actor_role)
+                SELECT id, 'reserved', 'test-master', 'viewer' FROM created
+              $rollback_sql$;
+              RAISE EXCEPTION 'invalid audit actor role was accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            IF EXISTS (SELECT 1 FROM oryva.viewer_accounts
+                       WHERE username = 'viewer-audit-rollback') THEN
+              RAISE EXCEPTION 'viewer reservation survived failed audit insert';
+            END IF;
+          END $viewer_reservation_audit$;
+          SQL
       - name: Verify singleton and state constraints
         run: |
           psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'

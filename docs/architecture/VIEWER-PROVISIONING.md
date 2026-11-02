@@ -4,7 +4,8 @@ This increment introduces preparation, **guarded role assignment**, read-only ac
 Apply `infrastructure/postgres/007_viewer_authorization.sql` and then
 `infrastructure/postgres/008_viewer_role_assignment.sql` and then
 `infrastructure/postgres/009_viewer_activation.sql` and then
-`infrastructure/postgres/010_viewer_deactivation.sql` before enabling
+`infrastructure/postgres/010_viewer_deactivation.sql` and then
+`infrastructure/postgres/011_viewer_reservation_audit.sql` before enabling
 these endpoints. Keycloak must expose the `oryva.provisioning.id` custom user
 attribute to the management service account.
 
@@ -42,6 +43,23 @@ identities are rejected. Concurrent prepared transitions are guarded by
 conditional SQL. The reservation ID is returned in the conflict response when the request
 remains connected; otherwise privileged database inspection can locate it.
 A future operational lookup API should improve this recovery experience.
+
+## Reservation audit (migration 011)
+
+Apply `infrastructure/postgres/011_viewer_reservation_audit.sql` **after**
+`010_viewer_deactivation.sql` and before deploying the updated API.
+Every new viewer reservation and its `reserved` event are committed by
+**one PostgreSQL statement**. The event records the authenticated requesting
+master/admin subject and role, not an email, password or bearer token.
+A uniqueness conflict inserts neither a new account nor an audit event;
+if audit insertion fails, the reservation insert rolls back as well.
+
+The existing append-only UPDATE/DELETE/TRUNCATE triggers protect the new
+event type. Older reservations are **not** backfilled with invented actor
+attribution; their prior audit history remains unchanged. Subsequent
+role/activation/revocation events retain their existing audit semantics.
+This does not yet audit the `prepared` transition or every failed external
+Keycloak operation. Those gaps and credential enrollment remain outstanding.
 
 ## Guarded role assignment
 

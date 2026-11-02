@@ -57,6 +57,7 @@
 - [x] Read-only, lease-serialized viewer activation readiness with strict ownership, exclusive role, password, email and required-action gates ([PR #68](https://github.com/sunstriker2009/sun-oryva/pull/68), E2E verified).
 - [x] Guarded viewer activation with durable intent, Keycloak reconciliation, actor audit and real E2E ([PR #69](https://github.com/sunstriker2009/sun-oryva/pull/69), six PR checks verified before merge).
 - [x] Database-first viewer deactivation and session revocation with durable recovery and audit ([PR #70](https://github.com/sunstriker2009/sun-oryva/pull/70); verified before merge).
+- [x] Transactional viewer reservation audit ([PR #72](https://github.com/sunstriker2009/sun-oryva/pull/72)); migration 011, real PostgreSQL/Keycloak E2E and schema validation passed all five workflows on implementation commit `c2f7babc`. Merge and post-merge checks still require verification. Preparation completion and failed Keycloak operations still need comprehensive audit coverage.
 - [ ] Secure viewer credential enrollment and invitations; full lifecycle and operational recovery tooling.
 - [ ] Password-change and account recovery policies, audit events, API error contracts, **distributed** rate limits, and full lifecycle security E2E.
 - [x] Process-local management write throttling with authenticated-subject partitioning and HTTP tests ([PR #71](https://github.com/sunstriker2009/sun-oryva/pull/71), latest PR CI verified; distributed quotas remain outstanding).

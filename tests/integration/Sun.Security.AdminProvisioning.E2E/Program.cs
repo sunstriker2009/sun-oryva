@@ -555,6 +555,17 @@ try
 catch (ViewerReservationConflictException) { }
 Console.WriteLine("PASS viewer reservation uniqueness and case-insensitive email conflicts");
 
+var initialViewerAudit = await viewerStore.GetAuditAsync(viewerReservation.Id);
+if (initialViewerAudit.Count != 1 ||
+    initialViewerAudit[0].EventType != "reserved" ||
+    initialViewerAudit[0].ActorSubject != actor ||
+    initialViewerAudit[0].ActorRole != "master")
+    throw new Exception("Viewer reservation must atomically append exactly one actor-bound audit event.");
+if ((await viewerStore.GetAuditAsync(Guid.NewGuid())).Count != 0)
+    throw new Exception("Unknown viewer must have no audit events.");
+Console.WriteLine("PASS concurrent viewer reservation writes exactly one append-only actor audit");
+
+
 await keycloak.CreateDisabledViewerCandidateAsync(viewerName, viewerEmail, viewerReservation.Id);
 var viewerPrepared = await viewerCoordinator.RecoverAsync(viewerReservation.Id);
 if (viewerPrepared?.State != "prepared" ||
@@ -603,7 +614,7 @@ if ((await viewerRoleCoordinator.AssignAsync(viewerReservation.Id, actor, "admin
     throw new Exception("Verified viewer role assignment should be idempotent.");
 var viewerEvents = await viewerStore.GetAuditAsync(viewerReservation.Id);
 if (!viewerEvents.Select(x => x.EventType)
-        .SequenceEqual(["role_assignment_pending", "role_assigned"]) ||
+        .SequenceEqual(["reserved", "role_assignment_pending", "role_assigned"]) ||
     viewerEvents.Any(x => x.ActorSubject != actor || x.ActorRole != "master") ||
     viewerEvents.Zip(viewerEvents.Skip(1)).Any(x => x.First.EventId >= x.Second.EventId))
     throw new Exception("Viewer role audit must be ordered and actor-bound.");
