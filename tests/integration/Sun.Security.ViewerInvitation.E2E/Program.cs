@@ -48,6 +48,34 @@ async Task ExpectDeniedAsync(Func<Task> action)
     throw new Exception("Unsafe invitation issuance was accepted.");
 }
 
+async Task<int> CountAuditAsync(Guid challengeId, string eventType)
+{
+    await using var connection = await source.OpenConnectionAsync();
+    await using var command = new NpgsqlCommand("""
+        SELECT count(*) FROM oryva.viewer_invitation_audit
+        WHERE challenge_id = @challenge AND event_type = @event;
+        """, connection);
+    command.Parameters.AddWithValue("challenge", challengeId);
+    command.Parameters.AddWithValue("event", eventType);
+    return Convert.ToInt32(await command.ExecuteScalarAsync());
+}
+
+async Task AssertActorAsync(Guid challengeId, string eventType, string? subject, string? role)
+{
+    await using var connection = await source.OpenConnectionAsync();
+    await using var command = new NpgsqlCommand("""
+        SELECT actor_subject, actor_role FROM oryva.viewer_invitation_audit
+        WHERE challenge_id = @challenge AND event_type = @event;
+        """, connection);
+    command.Parameters.AddWithValue("challenge", challengeId);
+    command.Parameters.AddWithValue("event", eventType);
+    await using var reader = await command.ExecuteReaderAsync();
+    if (!await reader.ReadAsync() ||
+        (reader.IsDBNull(0) ? null : reader.GetString(0)) != subject ||
+        (reader.IsDBNull(1) ? null : reader.GetString(1)) != role)
+        throw new Exception("Invitation audit actor or event was incorrect.");
+}
+
 try
 {
     var prepared = await SeedAsync("prepared");
@@ -64,6 +92,13 @@ try
     if (first.Token.Length != 43 || first.ToString().Contains(first.Token))
         throw new Exception("Challenge token generation or log redaction failed.");
     var second = await store.IssueAsync(viewer, "ci-admin", "admin");
+    if (await CountAuditAsync(first.Id, "issued") != 1 ||
+        await CountAuditAsync(first.Id, "revoked") != 1 ||
+        await CountAuditAsync(second.Id, "issued") != 1)
+        throw new Exception("Issuance or reissue audit events were not committed.");
+    await AssertActorAsync(first.Id, "issued", "ci-master", "master");
+    await AssertActorAsync(first.Id, "revoked", "ci-admin", "admin");
+    await AssertActorAsync(second.Id, "issued", "ci-admin", "admin");
     if (await store.ConsumeAsync(viewer, first.Token))
         throw new Exception("Reissued challenge did not revoke the previous token.");
     if (await store.ConsumeAsync(other, second.Token) ||
@@ -73,6 +108,9 @@ try
     if (!await store.ConsumeAsync(viewer, second.Token) ||
         await store.ConsumeAsync(viewer, second.Token))
         throw new Exception("One-time challenge was not consumed exactly once.");
+    if (await CountAuditAsync(second.Id, "consumed") != 1)
+        throw new Exception("Consumption was not audited exactly once.");
+    await AssertActorAsync(second.Id, "consumed", null, null);
     Console.WriteLine("PASS reissue revokes, wrong subject fails, replay fails");
 
     var expiring = await store.IssueAsync(viewer, "ci-master", "master");
@@ -137,6 +175,43 @@ try
         if ((string?)await command.ExecuteScalarAsync() != "role_assigned")
             throw new Exception("Invitation challenge unexpectedly activated a viewer.");
     }
+    if (await CountAuditAsync(concurrent.Id, "consumed") != 1)
+        throw new Exception("Concurrent consumption created duplicate or missing audit events.");
+
+    // Force an audit uniqueness failure and verify the token remains unconsumed:
+    // the state mutation and audit insert must be one database transaction.
+    var rollback = await store.IssueAsync(viewer, "ci-master", "master");
+    await using (var connection = await source.OpenConnectionAsync())
+    await using (var command = new NpgsqlCommand("""
+        INSERT INTO oryva.viewer_invitation_audit
+            (challenge_id, viewer_id, event_type)
+        VALUES (@challenge, @viewer, 'consumed');
+        """, connection))
+    {
+        command.Parameters.AddWithValue("challenge", rollback.Id);
+        command.Parameters.AddWithValue("viewer", viewer);
+        await command.ExecuteNonQueryAsync();
+    }
+    try
+    {
+        await store.ConsumeAsync(viewer, rollback.Token);
+        throw new Exception("Consumption unexpectedly succeeded despite audit conflict.");
+    }
+    catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
+    {
+        // Expected: the audit uniqueness constraint prevented commit.
+    }
+    await using (var connection = await source.OpenConnectionAsync())
+    await using (var command = new NpgsqlCommand("""
+        SELECT consumed_at FROM oryva.viewer_invitation_challenges
+        WHERE id = @challenge;
+        """, connection))
+    {
+        command.Parameters.AddWithValue("challenge", rollback.Id);
+        if (await command.ExecuteScalarAsync() is not DBNull)
+            throw new Exception("Challenge consumption survived failed audit insertion.");
+    }
+    Console.WriteLine("PASS append-only actor audit, exactly-once consumption and atomic rollback");
     Console.WriteLine("PASS concurrent consumption exactly once; no activation; digest only");
 }
 finally
