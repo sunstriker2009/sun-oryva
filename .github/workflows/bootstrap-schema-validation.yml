@@ -372,13 +372,13 @@ jobs:
               UPDATE oryva.viewer_invitation_audit
                  SET actor_subject = 'tampered'
                WHERE challenge_id = '10000000-0000-0000-0000-000000000001';
-              RAISE EXCEPTION 'audit mutation accepted';
+              RAISE EXCEPTION 'audit mutation accepted' USING ERRCODE = '22000';
             EXCEPTION WHEN raise_exception THEN NULL;
             END;
             BEGIN
               DELETE FROM oryva.viewer_invitation_audit
                WHERE challenge_id = '10000000-0000-0000-0000-000000000001';
-              RAISE EXCEPTION 'audit deletion accepted';
+              RAISE EXCEPTION 'audit deletion accepted' USING ERRCODE = '22000';
             EXCEPTION WHEN raise_exception THEN NULL;
             END;
           END $invitation_audit$;
