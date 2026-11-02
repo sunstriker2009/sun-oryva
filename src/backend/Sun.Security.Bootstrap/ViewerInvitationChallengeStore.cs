@@ -1,5 +1,7 @@
+using System.Runtime.Serialization;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json.Serialization;
 using Npgsql;
 
 namespace Sun.Security.Bootstrap;
@@ -226,6 +228,9 @@ public sealed class ViewerInvitationChallengeStore(NpgsqlDataSource dataSource)
 public sealed class ViewerInvitationIssue(Guid id, string token, DateTime expiresAtUtc)
 {
     public Guid Id { get; } = id;
+    // Explicit trusted delivery handoff only; never a JSON/API response.
+    [JsonIgnore]
+    [IgnoreDataMember]
     public string Token { get; } = token;
     public DateTime ExpiresAtUtc { get; } = expiresAtUtc;
     public override string ToString() =>
