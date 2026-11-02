@@ -24,7 +24,7 @@ Updated 2026-11-01. States distinguish merged, tested work from pending PRs.
 - [x] Database-first viewer revocation by active master/admin ([PR #70](https://github.com/sunstriker2009/sun-oryva/pull/70), PR and post-merge CI verified)
 - [ ] Secure invitations, credential enrollment, password change and recovery
 - [ ] Production-grade audit coverage, **distributed** rate limiting, least-privilege deployment and observability
-- [ ] In-process management POST rate limiter with per-subject quotas and HTTP tests (implementation pending PR CI; does not satisfy distributed production quotas)
+- [x] In-process management POST rate limiter with per-subject quotas and HTTP tests ([PR #71](https://github.com/sunstriker2009/sun-oryva/pull/71), PR CI verified; does not satisfy distributed production quotas)
 - [ ] Final negative-path and full-stack release validation; package/deployment guidance
 
 No production accounts or environments are changed by the integration tests.
