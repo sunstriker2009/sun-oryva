@@ -4,7 +4,8 @@ This increment introduces preparation, **guarded role assignment**, read-only ac
 Apply `infrastructure/postgres/007_viewer_authorization.sql` and then
 `infrastructure/postgres/008_viewer_role_assignment.sql` and then
 `infrastructure/postgres/009_viewer_activation.sql` and then
-`infrastructure/postgres/010_viewer_deactivation.sql` before enabling
+`infrastructure/postgres/010_viewer_deactivation.sql` and then
+`infrastructure/postgres/011_viewer_reservation_audit.sql` before enabling
 these endpoints. Keycloak must expose the `oryva.provisioning.id` custom user
 attribute to the management service account.
 
