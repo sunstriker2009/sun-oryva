@@ -151,3 +151,26 @@ link/session design, browser email proof, Keycloak credential enrollment,
 rate limits and release review remain blocked.
 
 **Verification:** [PR #90](https://github.com/sunstriker2009/sun-oryva/pull/90) was squash-merged as `716d12b6` after all five workflows passed on final head `793b8ce6`, including schema validation and PostgreSQL/Mailpit full-stack E2E. Post-merge main CI is separately tracked; production SMTP, credential enrollment and activation remain blocked.
+
+## Explicit single-iteration Mailpit dispatcher (proposed PR; CI pending)
+
+`ViewerInvitationDispatchOnce` composes the fenced PostgreSQL lease store
+with the transaction-held SMTP handoff. It is **not registered as a hosted
+service** and has no automatic schedule, production SMTP adapter, HTTP route
+or externally configured email destination. The only supplied adapter remains
+the explicit-loopback Mailpit sink. Each invocation sweeps invalid invitations,
+claims at most one eligible outbox row and performs the live, locked SMTP
+handoff. A transport failure is converted into a redacted, typed exception;
+the dispatcher schedules a 20-second fenced retry, respecting the existing
+five-attempt limit. It never returns a bearer, recipient or SMTP transcript.
+
+The return value `RelayAccepted` is **not** inbox delivery, ownership proof,
+enrollment or Keycloak activation. Database failures propagate rather than
+being disguised as transport failures. An ambiguous relay acceptance followed
+by a database failure can still lead to a duplicate message on a later lease
+reclaim; the one-time expiring challenge remains authoritative. The isolated
+PostgreSQL/Mailpit E2E exercises concurrent invocations, exactly one relay
+acceptance, transport failure with delayed retry, and deactivation sweep.
+No external email is sent. A future production dispatcher requires a separately
+reviewed TLS/authenticated SMTP implementation, secrets management, bounded
+scheduling, monitoring, abuse quotas, and the browser ownership ceremony.
