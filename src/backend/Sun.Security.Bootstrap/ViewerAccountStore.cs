@@ -83,19 +83,32 @@ public sealed class ViewerAccountStore(NpgsqlDataSource dataSource)
     /// Keycloak subject can be marked prepared. Does not grant viewer access.
     /// </summary>
     public async Task MarkPreparedAsync(
-        Guid id, string subjectId, CancellationToken cancellationToken = default)
+        Guid id, string subjectId, string actorSubject, string actorRole,
+        CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(subjectId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(actorSubject);
+        if (actorRole is not ("master" or "admin"))
+            throw new ArgumentException("Only master or admin may complete viewer preparation.", nameof(actorRole));
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        // A failed audit insert rolls back the subject binding and state transition.
         await using var command = new NpgsqlCommand("""
-            UPDATE oryva.viewer_accounts
-            SET keycloak_subject_id = @subject, state = 'prepared', updated_at = now()
-            WHERE id = @id AND state = 'reserved'
-              AND (keycloak_subject_id IS NULL OR keycloak_subject_id = @subject)
-            RETURNING id;
+            WITH changed AS (
+                UPDATE oryva.viewer_accounts
+                SET keycloak_subject_id = @subject, state = 'prepared', updated_at = now()
+                WHERE id = @id AND state = 'reserved'
+                  AND (keycloak_subject_id IS NULL OR keycloak_subject_id = @subject)
+                RETURNING id
+            )
+            INSERT INTO oryva.viewer_provisioning_audit
+                (provisioning_id, event_type, actor_subject, actor_role)
+            SELECT id, 'prepared', @actor, @role FROM changed
+            RETURNING provisioning_id;
             """, connection);
         command.Parameters.AddWithValue("id", id);
         command.Parameters.AddWithValue("subject", subjectId);
+        command.Parameters.AddWithValue("actor", actorSubject);
+        command.Parameters.AddWithValue("role", actorRole);
         if (await command.ExecuteScalarAsync(cancellationToken) is null)
             throw new InvalidOperationException("Viewer preparation transition denied.");
     }

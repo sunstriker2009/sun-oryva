@@ -22,7 +22,7 @@ public sealed class ViewerPreparationCoordinator(
         {
             await keycloak.CreateDisabledViewerCandidateAsync(
                 username, email, reservation.Id, cancellationToken);
-            return await RecoverAsync(reservation.Id, cancellationToken)
+            return await RecoverAsync(reservation.Id, actorSubject, actorRole, cancellationToken)
                 ?? throw new InvalidOperationException("Viewer reservation disappeared.");
         }
         catch (Exception error) when (error is not OperationCanceledException)
@@ -38,8 +38,12 @@ public sealed class ViewerPreparationCoordinator(
     /// Conditional SQL transition prevents two callers binding different subjects.
     /// </summary>
     public async Task<ViewerAccountState?> RecoverAsync(
-        Guid id, CancellationToken cancellationToken = default)
+        Guid id, string actorSubject, string actorRole,
+        CancellationToken cancellationToken = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(actorSubject);
+        if (actorRole is not ("master" or "admin"))
+            throw new ArgumentException("Only master or admin may recover viewer preparation.", nameof(actorRole));
         await using var lease = await provisioningLock.TryAcquireAsync(id, cancellationToken)
             ?? throw new ViewerProvisioningBusyException();
         var state = await accounts.GetAsync(id, cancellationToken);
@@ -68,7 +72,7 @@ public sealed class ViewerPreparationCoordinator(
         if (state.State == "reserved")
         {
             await lease.EnsureHeldAsync(cancellationToken);
-            await accounts.MarkPreparedAsync(id, user.Id, cancellationToken);
+            await accounts.MarkPreparedAsync(id, user.Id, actorSubject, actorRole, cancellationToken);
         }
         var updated = await accounts.GetAsync(id, cancellationToken)
             ?? throw new InvalidOperationException("Viewer reservation disappeared.");

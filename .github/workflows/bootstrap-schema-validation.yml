@@ -189,6 +189,53 @@ jobs:
             END IF;
           END $viewer_reservation_audit$;
           SQL
+      - name: Validate atomic viewer preparation audit and rollback
+        run: |
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/012_viewer_preparation_audit.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/012_viewer_preparation_audit.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
+          DO $viewer_prepared_audit$
+          BEGIN
+            BEGIN
+              EXECUTE $bad_actor$
+                WITH changed AS (
+                  UPDATE oryva.viewer_accounts
+                     SET keycloak_subject_id = 'verified-ci-subject', state = 'prepared'
+                   WHERE id = '00000000-0000-0000-0000-000000000003'
+                     AND state = 'reserved'
+                  RETURNING id
+                )
+                INSERT INTO oryva.viewer_provisioning_audit
+                  (provisioning_id, event_type, actor_subject, actor_role)
+                SELECT id, 'prepared', 'ci-actor', 'viewer' FROM changed
+              $bad_actor$;
+              RAISE EXCEPTION 'invalid preparation audit actor accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            IF (SELECT state FROM oryva.viewer_accounts
+                WHERE id = '00000000-0000-0000-0000-000000000003') <> 'reserved' THEN
+              RAISE EXCEPTION 'prepared state survived failed audit insertion';
+            END IF;
+          END $viewer_prepared_audit$;
+          WITH changed AS (
+            UPDATE oryva.viewer_accounts
+               SET keycloak_subject_id = 'verified-ci-subject', state = 'prepared'
+             WHERE id = '00000000-0000-0000-0000-000000000003' AND state = 'reserved'
+             RETURNING id
+          )
+          INSERT INTO oryva.viewer_provisioning_audit
+            (provisioning_id, event_type, actor_subject, actor_role)
+          SELECT id, 'prepared', 'ci-admin', 'admin' FROM changed;
+          DO $viewer_prepared_verified$
+          BEGIN
+            IF (SELECT count(*) FROM oryva.viewer_provisioning_audit
+                WHERE provisioning_id = '00000000-0000-0000-0000-000000000003'
+                  AND event_type = 'prepared' AND actor_subject = 'ci-admin'
+                  AND actor_role = 'admin') <> 1 THEN
+              RAISE EXCEPTION 'verified prepared transition not audited exactly once';
+            END IF;
+          END $viewer_prepared_verified$;
+          SQL
       - name: Verify singleton and state constraints
         run: |
           psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'

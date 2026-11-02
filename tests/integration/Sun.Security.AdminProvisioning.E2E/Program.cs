@@ -567,7 +567,7 @@ Console.WriteLine("PASS concurrent viewer reservation writes exactly one append-
 
 
 await keycloak.CreateDisabledViewerCandidateAsync(viewerName, viewerEmail, viewerReservation.Id);
-var viewerPrepared = await viewerCoordinator.RecoverAsync(viewerReservation.Id);
+var viewerPrepared = await viewerCoordinator.RecoverAsync(viewerReservation.Id, actor, "admin");
 if (viewerPrepared?.State != "prepared" ||
     string.IsNullOrWhiteSpace(viewerPrepared.KeycloakSubjectId) ||
     await viewerStore.IsActiveViewerSubjectAsync(viewerPrepared.KeycloakSubjectId))
@@ -579,9 +579,21 @@ if (viewerKeycloak.Enabled || viewerKeycloak.EmailVerified ||
     (await keycloak.GetDirectOryvaRolesAsync(viewerKeycloak.Id)).Count != 0 ||
     (await keycloak.GetEffectiveOryvaRolesAsync(viewerKeycloak.Id)).Count != 0)
     throw new Exception("Viewer preparation unexpectedly granted credentials or privileges.");
-if ((await viewerCoordinator.RecoverAsync(viewerReservation.Id))?.State != "prepared")
+if ((await viewerCoordinator.RecoverAsync(viewerReservation.Id, actor, "master"))?.State != "prepared")
     throw new Exception("Viewer recovery should be idempotent.");
-Console.WriteLine("PASS real Keycloak viewer preparation, disabled ownership and idempotent recovery");
+var preparedViewerEvents = await viewerStore.GetAuditAsync(viewerReservation.Id);
+if (!preparedViewerEvents.Select(x => x.EventType).SequenceEqual(["reserved", "prepared"]) ||
+    preparedViewerEvents[0].ActorRole != "master" ||
+    preparedViewerEvents[1].ActorRole != "admin" ||
+    preparedViewerEvents.Any(x => x.ActorSubject != actor) ||
+    preparedViewerEvents[0].EventId >= preparedViewerEvents[1].EventId)
+    throw new Exception("Preparation audit must attribute the actual recovering actor exactly once.");
+var rejectedPreparedActor = false;
+try { await viewerStore.MarkPreparedAsync(viewerReservation.Id, viewerKeycloak.Id, actor, "viewer"); }
+catch (ArgumentException) { rejectedPreparedActor = true; }
+if (!rejectedPreparedActor || (await viewerStore.GetAuditAsync(viewerReservation.Id)).Count != 2)
+    throw new Exception("Viewer actor cannot write a preparation event.");
+Console.WriteLine("PASS real Keycloak viewer preparation, atomic audit and idempotent recovery");
 
 // M5: guarded viewer role assignment never enables or credentials the account.
 if (await viewerRoleCoordinator.AssignAsync(Guid.NewGuid(), actor, "master") is not null)
@@ -614,8 +626,10 @@ if ((await viewerRoleCoordinator.AssignAsync(viewerReservation.Id, actor, "admin
     throw new Exception("Verified viewer role assignment should be idempotent.");
 var viewerEvents = await viewerStore.GetAuditAsync(viewerReservation.Id);
 if (!viewerEvents.Select(x => x.EventType)
-        .SequenceEqual(["reserved", "role_assignment_pending", "role_assigned"]) ||
-    viewerEvents.Any(x => x.ActorSubject != actor || x.ActorRole != "master") ||
+        .SequenceEqual(["reserved", "prepared", "role_assignment_pending", "role_assigned"]) ||
+    viewerEvents.Any(x => x.ActorSubject != actor) ||
+    viewerEvents[0].ActorRole != "master" || viewerEvents[1].ActorRole != "admin" ||
+    viewerEvents.Skip(2).Any(x => x.ActorRole != "master") ||
     viewerEvents.Zip(viewerEvents.Skip(1)).Any(x => x.First.EventId >= x.Second.EventId))
     throw new Exception("Viewer role audit must be ordered and actor-bound.");
 Console.WriteLine("PASS viewer role assignment, advisory contention, idempotence, disabled state and audit");
@@ -810,7 +824,7 @@ var pendingViewer = await viewerStore.ReserveAsync(
     pendingViewerName, pendingViewerName + "@example.invalid", actor, "admin");
 await keycloak.CreateDisabledViewerCandidateAsync(
     pendingViewerName, pendingViewer.Email, pendingViewer.Id);
-var pendingViewerPrepared = await viewerCoordinator.RecoverAsync(pendingViewer.Id)
+var pendingViewerPrepared = await viewerCoordinator.RecoverAsync(pendingViewer.Id, actor, "admin")
     ?? throw new Exception("Missing pending viewer.");
 await viewerStore.MarkRoleAssignmentPendingAsync(
     pendingViewer.Id, pendingViewerPrepared.KeycloakSubjectId!, actor, "admin");
@@ -880,7 +894,7 @@ var externalViewer = await viewerStore.ReserveAsync(
     externalViewerName, externalViewerName + "@example.invalid", actor, "master");
 await keycloak.CreateDisabledViewerCandidateAsync(
     externalViewerName, externalViewer.Email, externalViewer.Id);
-var externalPrepared = await viewerCoordinator.RecoverAsync(externalViewer.Id)
+var externalPrepared = await viewerCoordinator.RecoverAsync(externalViewer.Id, actor, "master")
     ?? throw new Exception("External enablement fixture preparation failed.");
 await viewerRoleCoordinator.AssignAsync(externalViewer.Id, actor, "master");
 await keycloak.SetInitialPasswordAsync(
@@ -904,7 +918,7 @@ var conflictViewer = await viewerStore.ReserveAsync(
     conflictViewerName, conflictViewerName + "@example.invalid", actor, "master");
 await keycloak.CreateDisabledViewerCandidateAsync(
     conflictViewerName, conflictViewer.Email, conflictViewer.Id);
-var conflictPrepared = await viewerCoordinator.RecoverAsync(conflictViewer.Id)
+var conflictPrepared = await viewerCoordinator.RecoverAsync(conflictViewer.Id, actor, "master")
     ?? throw new Exception("Missing conflict viewer.");
 await keycloak.AddAdminRoleMappingAsync(conflictPrepared.KeycloakSubjectId!);
 var conflictRejected = false;
@@ -920,7 +934,7 @@ var missingViewerName = "viewer-missing-" + Guid.NewGuid().ToString("N")[..12];
 var missingViewer = await viewerStore.ReserveAsync(
     missingViewerName, missingViewerName + "@example.invalid", actor, "admin");
 var missingViewerRejected = false;
-try { await viewerCoordinator.RecoverAsync(missingViewer.Id); }
+try { await viewerCoordinator.RecoverAsync(missingViewer.Id, actor, "admin"); }
 catch (InvalidOperationException) { missingViewerRejected = true; }
 if (!missingViewerRejected || (await viewerStore.GetAsync(missingViewer.Id))?.State != "reserved")
     throw new Exception("Missing Keycloak viewer must remain reserved.");
@@ -932,7 +946,7 @@ var foreignViewer = await viewerStore.ReserveAsync(
 await keycloak.CreateDisabledViewerCandidateAsync(
     foreignViewerName, foreignViewer.Email, Guid.NewGuid());
 var foreignRejected = false;
-try { await viewerCoordinator.RecoverAsync(foreignViewer.Id); }
+try { await viewerCoordinator.RecoverAsync(foreignViewer.Id, actor, "admin"); }
 catch (InvalidOperationException) { foreignRejected = true; }
 if (!foreignRejected || (await viewerStore.GetAsync(foreignViewer.Id))?.State != "reserved")
     throw new Exception("Unowned Keycloak viewer was adopted.");
