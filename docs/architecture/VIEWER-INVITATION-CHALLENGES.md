@@ -152,7 +152,7 @@ rate limits and release review remain blocked.
 
 **Verification:** [PR #90](https://github.com/sunstriker2009/sun-oryva/pull/90) was squash-merged as `716d12b6` after all five workflows passed on final head `793b8ce6`, including schema validation and PostgreSQL/Mailpit full-stack E2E. Post-merge main CI is separately tracked; production SMTP, credential enrollment and activation remain blocked.
 
-## Explicit single-iteration Mailpit dispatcher (proposed PR; CI pending)
+## Explicit single-iteration Mailpit dispatcher (verified PR #92)
 
 `ViewerInvitationDispatchOnce` composes the fenced PostgreSQL lease store
 with the transaction-held SMTP handoff. It is **not registered as a hosted
@@ -174,3 +174,5 @@ acceptance, transport failure with delayed retry, and deactivation sweep.
 No external email is sent. A future production dispatcher requires a separately
 reviewed TLS/authenticated SMTP implementation, secrets management, bounded
 scheduling, monitoring, abuse quotas, and the browser ownership ceremony.
+
+**Verification:** [PR #92](https://github.com/sunstriker2009/sun-oryva/pull/92) was squash-merged as `3b831ad9` after all four applicable PR workflows passed on final head `71d728f3`, including real PostgreSQL/Mailpit E2E. Post-merge main CI is not independently verified. No production delivery or enrollment was enabled.
