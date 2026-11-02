@@ -107,6 +107,19 @@ public sealed class ViewerInvitationChallengeStore(NpgsqlDataSource dataSource)
                 throw new InvalidOperationException("Viewer Keycloak subject is missing.");
         }
 
+        // A new invitation supersedes every outstanding browser exchange for
+        // this viewer. This runs under the viewer row lock and commits atomically
+        // with the new challenge, preventing old sessions surviving a reissue.
+        await using (var revokeSessions = new NpgsqlCommand("""
+            UPDATE oryva.viewer_invitation_browser_sessions
+            SET revoked_at = clock_timestamp()
+            WHERE viewer_id = @viewer AND revoked_at IS NULL;
+            """, connection, transaction))
+        {
+            revokeSessions.Parameters.AddWithValue("viewer", viewerId);
+            await revokeSessions.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         // Revocation and its actor-attributed event share the issuance transaction.
         // A failed audit insert rolls back the revocation and new challenge.
         await using (var revoke = new NpgsqlCommand("""
