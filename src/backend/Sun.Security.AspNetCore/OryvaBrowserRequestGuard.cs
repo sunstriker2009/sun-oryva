@@ -10,7 +10,7 @@ namespace Sun.Security.AspNetCore;
 /// the marker never publishes an endpoint or grants enrollment permission.
 /// </summary>
 [AttributeUsage(AttributeTargets.Method | AttributeTargets.Class)]
-public sealed class OryvaBrowserCeremonyAttribute : Attribute;
+public sealed class OryvaBrowserCeremonyAttribute : Attribute { }
 
 /// <summary>
 /// Defense-in-depth HTTP request boundary for future browser invitation POSTs.
@@ -64,7 +64,7 @@ public static class OryvaBrowserRequestGuard
             uri.AbsolutePath != "/" ||
             !string.IsNullOrEmpty(uri.Query) ||
             !string.IsNullOrEmpty(uri.Fragment) ||
-            uri.Host.EndsWith('.', StringComparison.Ordinal) ||
+            uri.Host.EndsWith(".", StringComparison.Ordinal) ||
             !string.Equals(value.TrimEnd('/'),
                 uri.GetLeftPart(UriPartial.Authority),
                 StringComparison.OrdinalIgnoreCase))
