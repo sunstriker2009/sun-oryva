@@ -56,7 +56,7 @@ def messages_for(address):
 def find_action_url(message):
     # HTML may encode query-string ampersands; never print the token or URL.
     candidates = re.findall(
-        r"https?://[^\\s<\\\"']+",
+        r"https?://[^\s<>\"']+",
         html.unescape((message.get("HTML") or "") + "\n" + (message.get("Text") or "")),
     )
     for candidate in candidates:
