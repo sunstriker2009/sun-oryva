@@ -284,6 +284,52 @@ await using (var secondSource = NpgsqlDataSource.Create(dsn))
 }
 Console.WriteLine("PASS PostgreSQL management quota HTTP 429, handler rejection and read isolation");
 
+// A database outage must reject management writes, not bypass the quota.
+var unavailableBuilder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    EnvironmentName = "Development"
+});
+unavailableBuilder.WebHost.UseTestServer();
+var unavailableDsn = new NpgsqlConnectionStringBuilder(dsn)
+{
+    Port = 1, Timeout = 1, Pooling = false
+}.ConnectionString;
+unavailableBuilder.Services.AddSingleton(NpgsqlDataSource.Create(unavailableDsn));
+unavailableBuilder.Services.AddAuthentication("E2EViewer")
+    .AddScheme<AuthenticationSchemeOptions, ViewerTestAuthenticationHandler>(
+        "E2EViewer", _ => { });
+unavailableBuilder.Services.AddAuthorization();
+unavailableBuilder.Services.AddOryvaManagementRateLimiting(120);
+unavailableBuilder.Services.AddOryvaDistributedManagementWriteQuota();
+await using (var unavailableApp = unavailableBuilder.Build())
+{
+    unavailableApp.UseRouting();
+    unavailableApp.UseAuthentication();
+    unavailableApp.UseAuthorization();
+    unavailableApp.UseRateLimiter();
+    unavailableApp.UseOryvaDistributedManagementWriteQuota(2);
+    var invoked = false;
+    unavailableApp.MapPost("/test/write-unavailable", () =>
+        {
+            invoked = true;
+            return Results.Ok();
+        })
+        .RequireAuthorization()
+        .RequireRateLimiting(OryvaManagementRateLimiting.PolicyName);
+    await unavailableApp.StartAsync();
+    using var unavailableClient = unavailableApp.GetTestClient();
+    using var request = new HttpRequestMessage(HttpMethod.Post, "/test/write-unavailable");
+    request.Headers.Add("X-Test-Subject", "offline-" + Guid.NewGuid().ToString("N"));
+    using var response = await unavailableClient.SendAsync(request);
+    if (response.StatusCode != HttpStatusCode.ServiceUnavailable ||
+        invoked ||
+        !(await response.Content.ReadAsStringAsync()).Contains(
+            "management_quota_unavailable", StringComparison.Ordinal))
+        throw new Exception("Unavailable quota database did not fail closed with 503.");
+    await unavailableApp.StopAsync();
+}
+Console.WriteLine("PASS quota database outage denies management handler with safe 503");
+
 var goodPrincipal = new ClaimsPrincipal(new ClaimsIdentity(
     [new Claim("sub", "subject-one")], "test"));
 var duplicatePrincipal = new ClaimsPrincipal(new ClaimsIdentity(
