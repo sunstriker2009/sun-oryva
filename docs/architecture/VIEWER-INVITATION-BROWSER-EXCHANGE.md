@@ -16,6 +16,12 @@ The internal exchange now charges a PostgreSQL-backed, viewer-scoped, fixed 60-s
 
 This is **not a complete public endpoint abuse defense**. A caller who knows a viewer ID can temporarily exhaust that viewer's quota. Before any public browser route, add separately reviewed distributed source-IP and global admission limits with trusted reverse-proxy configuration, generic HTTP responses, monitoring and abuse recovery. Never accept untrusted `X-Forwarded-For` as an identity key. The quota is not email verification, a session, a password-write grant or permission to enable Keycloak accounts.
 
+## Opt-in browser POST request guard (unverified PR milestone)
+
+`OryvaBrowserRequestGuard` in `Sun.Security.AspNetCore` is a reusable, **unregistered** middleware boundary for future explicitly marked POST endpoints. It rejects non-HTTPS requests, unexpected Host or Origin, missing/duplicate Origin, supplied non-`same-origin` Fetch Metadata, and absent/mismatched/malformed 256-bit-shaped CSRF double-submit tokens. It requires a single `__Host-oryva-csrf` cookie and matching `X-Oryva-Csrf` header with constant-time comparison, rejects duplicate CSRF cookies, and sets no-store/no-referrer response headers. The expected canonical HTTPS origin is validated at startup; raw `X-Forwarded-*` headers are never used as trust evidence. A deployment behind a reverse proxy needs explicit trusted-proxy configuration and its own security review before enabling the guard.
+
+The guard is **not registered in the API**, does not mint CSRF cookies, and does not implement a browser session or enrollment route. A double-submit comparison alone does not authenticate a viewer, prove email ownership or authorize a Keycloak credential change. Future cookie issuance must enforce `Secure`, `Path=/`, host-only `__Host-` rules and a separately protected HttpOnly browser-session cookie. Distributed IP/global throttling, one-time credential completion, independent Keycloak email verification, session revocation, browser E2E and activation safeguards remain outstanding. Isolated TestServer policy tests are wired into CI, but this milestone must not be marked verified until PR-head checks are observed passing.
+
 ## Threat boundaries and unfinished work
 
 - **Proof scope:** possession of an invitation code is not independent confirmation that Keycloak's email is verified. Neither exchange nor inspection sets `emailVerified`, writes a credential, enables an account, grants roles, or creates a Keycloak session.
