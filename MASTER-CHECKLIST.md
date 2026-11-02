@@ -1,6 +1,6 @@
 # ORYVA Master Development Checklist
 
-**Product:** SUN-001 · **Updated:** 2026-11-01 · **Legend:** [x] merged and verified; [ ] outstanding.
+**Product:** SUN-001 · **Updated:** 2026-11-02 · **Legend:** [x] merged and verified; [ ] outstanding.
 
 **Baseline:** .NET 10+, ASP.NET Core 10+, C# 14+, Keycloak 26.3.5, PostgreSQL 17. EF Core 10+ where applicable.
 
@@ -64,7 +64,7 @@
 - [ ] Safe viewer invitation and credential enrollment: native disabled-account Keycloak action-email was **rejected** in isolated CI (PR #79); an independent email-proof and browser credential ceremony remains unvalidated. Do not expose invitation endpoints. See [enrollment gate](docs/operations/KEYCLOAK-DISABLED-ENROLLMENT.md).
 - [x] Isolated disabled-account action-email behavior probe ([test](tests/integration/keycloak_disabled_action_link_e2e.py), [runbook](docs/operations/KEYCLOAK-ACTION-LINK-MAIL-SINK.md)): Keycloak 26.3.5 **rejected** `execute-actions-email` for a disabled unverified test identity; no email, password, verified state or session resulted. Five PR workflows passed on `544b03bc`, including [real Keycloak E2E](https://github.com/sunstriker2009/sun-oryva/actions/runs/41398729427). This blocks the native disabled-user invitation path; browser form completion, one-time link replay/expiry and a separate fail-closed enrollment design remain outstanding.
 - [x] Atomic viewer preparation completion audit (migration 012, [PR #73](https://github.com/sunstriker2009/sun-oryva/pull/73)); five PR checks passed on `e93f3016`, squash-merged as `237780bd`, and all five post-merge `main` workflows passed, including real Keycloak/PostgreSQL E2E (verified 2026-11-01).
-- [ ] Internal one-time viewer invitation challenge foundation (migration 014, CSPRNG digest-only token, transactional reissue, atomic replay/expiry/email/state guards, PostgreSQL E2E) proposed in the current PR; **CI not yet verified and no public endpoint or email delivery exists**. [Threat model](docs/architecture/VIEWER-INVITATION-CHALLENGES.md).
+- [x] Internal one-time viewer invitation challenge foundation (migration 014, CSPRNG digest-only token, transactional reissue, atomic replay/expiry/email/state guards, PostgreSQL E2E): [PR #80](https://github.com/sunstriker2009/sun-oryva/pull/80) merged as `02b79577`; **all five PR workflows passed** on head `7092427e`, including real PostgreSQL/Keycloak full-stack E2E. **No public invitation endpoint, mail delivery, credential enrollment or activation is implemented.** [Threat model](docs/architecture/VIEWER-INVITATION-CHALLENGES.md).
 - [ ] Password-change and account recovery policies, audit events, API error contracts, and full lifecycle security E2E.
 - [x] PostgreSQL-backed cross-replica management write quotas (migration 013, HTTP concurrency, 429 and outage-503 E2E; [PR #75](https://github.com/sunstriker2009/sun-oryva/pull/75), five workflows passed on implementation commit `e8f0e462` before merge). Edge, login, invitation and password-recovery quotas remain outstanding.
 - [x] Process-local management write throttling with authenticated-subject partitioning and HTTP tests ([PR #71](https://github.com/sunstriker2009/sun-oryva/pull/71), verified).
