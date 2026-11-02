@@ -457,6 +457,27 @@ jobs:
             END;
           END $encrypted_outbox$;
           SQL
+      - name: Validate fenced invitation lease schema and idempotence
+        run: |
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/018_viewer_invitation_outbox_leases.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/018_viewer_invitation_outbox_leases.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
+          DO $lease_schema$
+          BEGIN
+            BEGIN
+              UPDATE oryva.viewer_invitation_outbox
+              SET state = 'leased' WHERE challenge_id = '10000000-0000-0000-0000-000000000001';
+              RAISE EXCEPTION 'leased row without fencing fields accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            BEGIN
+              UPDATE oryva.viewer_invitation_outbox
+              SET attempt_count = 6 WHERE challenge_id = '10000000-0000-0000-0000-000000000001';
+              RAISE EXCEPTION 'excessive retry attempts accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+          END $lease_schema$;
+          SQL
       - name: Verify singleton and state constraints
         run: |
           psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'

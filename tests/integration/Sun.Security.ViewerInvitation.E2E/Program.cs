@@ -225,6 +225,80 @@ try
         throw new Exception("Outbox insertion failure left a revoked challenge.");
     Console.WriteLine("PASS encrypted atomic outbox, AEAD tamper and identity binding, reissue and rollback");
 
+    // No SMTP sender exists: verify only fenced PostgreSQL claim/retry gates.
+    // Cancel the earlier queued challenge so this isolated claim test has
+    // exactly one eligible row.
+    var (survivingEnvelope, survivingEmail, _) = await LoadOutboxAsync(surviving.Id);
+    if (!await store.ConsumeAsync(viewer,
+        encryption.Decrypt(surviving.Id, viewer, survivingEmail, survivingEnvelope)))
+        throw new Exception("Failed to close prior queued invitation fixture.");
+    var leasing = new ViewerInvitationOutboxLeaseStore(source);
+    var leaseViewer = await SeedAsync("role_assigned");
+    var leaseQueued = await store.IssueQueuedAsync(leaseViewer, "ci-master", "master", encryption);
+    var claims = await Task.WhenAll(
+        Enumerable.Range(0, 12).Select(_ => leasing.ClaimNextAsync()));
+    var won = claims.Where(x => x is not null).ToArray();
+    if (won.Length != 1 || won[0]!.ChallengeId != leaseQueued.Id ||
+        await leasing.ClaimNextAsync() is not null)
+        throw new Exception("Concurrent workers claimed the same invitation.");
+    var firstLease = won[0]!;
+    if (await leasing.ReleaseForRetryAsync(firstLease with { LeaseId = Guid.NewGuid() }))
+        throw new Exception("Wrong lease fencing identifier released delivery.");
+    if (!await leasing.ReleaseForRetryAsync(firstLease) ||
+        await leasing.ReleaseForRetryAsync(firstLease) ||
+        await leasing.ClaimNextAsync() is not null)
+        throw new Exception("Lease release/retry delay was not enforced.");
+    await ExecuteAsync("""
+        UPDATE oryva.viewer_invitation_outbox
+        SET next_attempt_at = clock_timestamp() - interval '1 second'
+        WHERE challenge_id = @id;
+        """, leaseQueued.Id);
+    var secondLease = await leasing.ClaimNextAsync()
+        ?? throw new Exception("Released delivery could not be reclaimed.");
+    if (secondLease.LeaseId == firstLease.LeaseId ||
+        await leasing.ReleaseForRetryAsync(firstLease))
+        throw new Exception("Stale lease mutated a newer claim.");
+    var reissued = await store.IssueQueuedAsync(leaseViewer, "ci-admin", "admin", encryption);
+    if ((await LoadOutboxAsync(leaseQueued.Id)).State != "cancelled" ||
+        await leasing.ReleaseForRetryAsync(secondLease))
+        throw new Exception("Reissue did not fence and cancel a claimed delivery.");
+    // Expiry is checked at claim time and by the invalid-delivery sweep.
+    await ExecuteAsync("""
+        UPDATE oryva.viewer_invitation_challenges
+        SET created_at = clock_timestamp() - interval '1 hour',
+            expires_at = clock_timestamp() - interval '50 minutes'
+        WHERE id = @id;
+        """, reissued.Id);
+    if (await leasing.ClaimNextAsync() is not null ||
+        await leasing.SweepInvalidAsync() < 1 ||
+        (await LoadOutboxAsync(reissued.Id)).State != "cancelled")
+        throw new Exception("Expired invitation was not cancelled.");
+    var rebound = await store.IssueQueuedAsync(leaseViewer, "ci-master", "master", encryption);
+    await ExecuteAsync("""
+        UPDATE oryva.viewer_accounts SET keycloak_subject_id = 'ci-rebound'
+        WHERE id = @id;
+        """, leaseViewer);
+    if (await leasing.ClaimNextAsync() is not null ||
+        await leasing.SweepInvalidAsync() < 1 ||
+        (await LoadOutboxAsync(rebound.Id)).State != "cancelled")
+        throw new Exception("Subject-rebound invitation was eligible for delivery.");
+    await ExecuteAsync("""
+        UPDATE oryva.viewer_accounts
+        SET keycloak_subject_id = 'ci-subject-' || replace(id::text, '-', '')
+        WHERE id = @id;
+        """, leaseViewer);
+    var exhausted = await store.IssueQueuedAsync(leaseViewer, "ci-master", "master", encryption);
+    await ExecuteAsync("""
+        UPDATE oryva.viewer_invitation_outbox SET attempt_count = 5
+        WHERE challenge_id = @id;
+        """, exhausted.Id);
+    if (await leasing.ClaimNextAsync() is not null ||
+        await leasing.SweepInvalidAsync() < 1 ||
+        (await LoadOutboxAsync(exhausted.Id)).State != "cancelled")
+        throw new Exception("Exhausted delivery was not cancelled.");
+    Console.WriteLine("PASS fenced outbox claim concurrency, retry, reissue, expiry, identity and exhaustion");
+
+
     await ExpectDeniedAsync(() => store.IssueAsync(viewer, "ci-viewer", "viewer"));
     await ExpectDeniedAsync(() => store.IssueAsync(viewer, "", "admin"));
     await ExpectDeniedAsync(() => store.IssueAsync(viewer, "ci-intruder", "master"));

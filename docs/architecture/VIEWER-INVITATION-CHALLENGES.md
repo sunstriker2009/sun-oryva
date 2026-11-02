@@ -99,3 +99,26 @@ The isolated PostgreSQL E2E covers AEAD tampering, identity binding,
 reissue/consumption cancellation and simulated outbox-insertion failure.
 No browser enrollment, email ownership proof, credential change, Keycloak
 activation or production delivery is authorized by this foundation.
+
+## Fenced claim/retry foundation (migration 018)
+
+The internal `ViewerInvitationOutboxLeaseStore` implements PostgreSQL
+`FOR UPDATE SKIP LOCKED` claiming, one-minute leases with fresh UUID fencing
+identifiers, a 20-second retry delay, five-attempt cap and invalid/expired
+delivery cancellation. Claim eligibility requires an unconsumed, unrevoked,
+unexpired challenge and an unchanged, role-assigned viewer with the original
+Keycloak subject and recipient email. Reissue and token consumption now
+cancel both pending **and leased** deliveries and clear lease identifiers.
+The isolated PostgreSQL E2E covers twelve concurrent claimants, wrong/stale
+lease fencing, retry delay, cancellation after reissue, expiry, subject
+substitution and exhausted attempts. Migration 018 must precede the matching
+application version and is applied twice in schema CI.
+
+**No SMTP sender or completion acknowledgment exists.** A claim is not a
+delivery, and an expired lease must not be used to send. A future mailer
+must revalidate under a transaction-held row lock at the actual SMTP handoff,
+avoid logging plaintext bearer material, and handle ambiguous SMTP responses
+as at-least-once delivery. A 60-second lease alone does not serialize a
+remote SMTP send with revocation; it is NOT permission to send mail.
+Browser URL/session design, verified email ownership, credential enrollment,
+Keycloak activation and production least-privilege grants remain blocked.
