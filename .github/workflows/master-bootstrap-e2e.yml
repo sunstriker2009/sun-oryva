@@ -124,6 +124,11 @@ jobs:
       - name: Initialize cross-replica management quota schema
         run: |
           PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/013_management_write_quotas.sql
+      - name: Initialize one-time viewer invitation challenge schema
+        run: |
+          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/014_viewer_invitation_challenges.sql
+      - name: Run one-time viewer invitation PostgreSQL security E2E
+        run: dotnet run --project tests/integration/Sun.Security.ViewerInvitation.E2E/Sun.Security.ViewerInvitation.E2E.csproj -c Release
       - name: Run actual .NET bootstrap against Keycloak and PostgreSQL
         run: dotnet run --project tests/integration/Sun.Security.Bootstrap.E2E/Sun.Security.Bootstrap.E2E.csproj -c Release
       - name: Run viewer authorization PostgreSQL and HTTP E2E
