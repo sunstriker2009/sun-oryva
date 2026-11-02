@@ -24,9 +24,30 @@ public sealed class ViewerInvitationChallengeStore(NpgsqlDataSource dataSource)
     /// The returned secret must be delivered only by a future approved mailer,
     /// never logged or returned from an administrative API.
     /// </summary>
-    public async Task<ViewerInvitationIssue> IssueAsync(
+    public Task<ViewerInvitationIssue> IssueAsync(
         Guid viewerId, string actorSubject, string actorRole,
+        CancellationToken cancellationToken = default) =>
+        IssueCoreAsync(viewerId, actorSubject, actorRole, null, cancellationToken);
+
+    /// <summary>
+    /// Issues a challenge and atomically queues its encrypted bearer token.
+    /// Only metadata is returned. There is deliberately no SMTP dispatcher.
+    /// </summary>
+    public async Task<ViewerInvitationQueuedReceipt> IssueQueuedAsync(
+        Guid viewerId, string actorSubject, string actorRole,
+        ViewerInvitationOutboxCrypto encryption,
         CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(encryption);
+        var issued = await IssueCoreAsync(
+            viewerId, actorSubject, actorRole, encryption, cancellationToken);
+        return new ViewerInvitationQueuedReceipt(issued.Id, issued.ExpiresAtUtc);
+    }
+
+    private async Task<ViewerInvitationIssue> IssueCoreAsync(
+        Guid viewerId, string actorSubject, string actorRole,
+        ViewerInvitationOutboxCrypto? encryption,
+        CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(actorSubject);
         if (actorRole is not ("master" or "admin"))
@@ -106,6 +127,20 @@ public sealed class ViewerInvitationChallengeStore(NpgsqlDataSource dataSource)
             await revoke.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        // Reissue invalidates any still-pending encrypted delivery. Both
+        // revocation and cancellation roll back if the new issuance fails.
+        await using (var cancel = new NpgsqlCommand("""
+            UPDATE oryva.viewer_invitation_outbox AS delivery
+            SET state = 'cancelled', cancelled_at = now()
+            FROM oryva.viewer_invitation_challenges AS challenge
+            WHERE delivery.challenge_id = challenge.id
+              AND challenge.viewer_id = @viewer AND delivery.state = 'pending';
+            """, connection, transaction))
+        {
+            cancel.Parameters.AddWithValue("viewer", viewerId);
+            await cancel.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         DateTime expiresAt;
         await using (var insert = new NpgsqlCommand("""
             INSERT INTO oryva.viewer_invitation_challenges
@@ -126,6 +161,24 @@ public sealed class ViewerInvitationChallengeStore(NpgsqlDataSource dataSource)
             insert.Parameters.AddWithValue("role", actorRole);
             expiresAt = (DateTime)(await insert.ExecuteScalarAsync(cancellationToken)
                 ?? throw new InvalidOperationException("Challenge insertion returned no expiry."));
+        }
+
+        // A failure to encrypt or insert the outbox row aborts challenge
+        // issuance and audit together; no plaintext token reaches PostgreSQL.
+        if (encryption is not null)
+        {
+            var envelope = encryption.Encrypt(challengeId, viewerId, email, token);
+            await using var queue = new NpgsqlCommand("""
+                INSERT INTO oryva.viewer_invitation_outbox
+                    (challenge_id, key_id, nonce, ciphertext, auth_tag)
+                VALUES (@challenge, @key, @nonce, @ciphertext, @tag);
+                """, connection, transaction);
+            queue.Parameters.AddWithValue("challenge", challengeId);
+            queue.Parameters.AddWithValue("key", envelope.KeyId);
+            queue.Parameters.AddWithValue("nonce", envelope.Nonce);
+            queue.Parameters.AddWithValue("ciphertext", envelope.Ciphertext);
+            queue.Parameters.AddWithValue("tag", envelope.Tag);
+            await queue.ExecuteNonQueryAsync(cancellationToken);
         }
 
         await using (var audit = new NpgsqlCommand("""
@@ -214,6 +267,17 @@ public sealed class ViewerInvitationChallengeStore(NpgsqlDataSource dataSource)
             audit.Parameters.AddWithValue("challenge", challengeId);
             audit.Parameters.AddWithValue("viewer", viewerId);
             await audit.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        // Possession consumes the bearer token and cancels any unsent copy.
+        await using (var cancel = new NpgsqlCommand("""
+            UPDATE oryva.viewer_invitation_outbox
+            SET state = 'cancelled', cancelled_at = now()
+            WHERE challenge_id = @challenge AND state = 'pending';
+            """, connection, transaction))
+        {
+            cancel.Parameters.AddWithValue("challenge", challengeId);
+            await cancel.ExecuteNonQueryAsync(cancellationToken);
         }
 
         await transaction.CommitAsync(cancellationToken);
