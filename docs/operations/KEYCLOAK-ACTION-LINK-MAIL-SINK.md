@@ -1,6 +1,6 @@
 # Disabled Keycloak action-link mail-sink probe
 
-**Scope:** CI-only behavioral evidence for Keycloak 26.3.5. **Not an invitation API, self-service enrollment implementation, or production rollout approval.**
+**Observed on 2026-11-02:** the isolated Keycloak 26.3.5 CI probe returned a rejected `execute-actions-email` request for a disabled, unverified identity; no email was emitted. The identity remained disabled, unverified, credential-free and session-free. The full-stack job passed on PR #79 commit `544b03bc` (see [workflow run](https://github.com/sunstriker2009/sun-oryva/actions/runs/41398729427)). **This is evidence that the proposed native disabled-account invitation route is blocked**, not a completed enrollment ceremony or production rollout approval.
 
 The full-stack GitHub Actions job starts an isolated Mailpit SMTP sink on a private Docker network. Before CI relaxes email verification for unrelated JWT fixtures, `keycloak_disabled_action_link_e2e.py` creates one randomly named, disabled and unverified identity with `VERIFY_EMAIL` and `UPDATE_PASSWORD` actions. It temporarily configures the isolated realm's SMTP host to `oryva-e2e-mailpit:1025` and calls Keycloak's `execute-actions-email` endpoint.
 
@@ -9,3 +9,7 @@ The probe records whether Keycloak rejects that request or sends an email to `ex
 **This does not establish** that a disabled user can complete the verification and password-setting forms, that action links are single-use, that replay and expiry are enforced, that browser cookie/CSRF flows are safe, or that invitation endpoints are production-ready. The test deliberately never enables any identity. A full browser-compatible, mail-sink enrollment/replay/expiry E2E and threat review are still required. If disabled identities cannot complete required actions, a separate fail-closed enrollment state and explicit activation policy must be designed rather than silently enabling an unverified user.
 
 **Release gate:** Do not expose an invitation endpoint or mark credential enrollment complete based solely on this probe. Preserve sole-master creation of admins, master/admin management of viewers, viewer read-only authorization, database-backed active-state checks and Keycloak ownership validation.
+
+## Design consequence
+
+Do **not** temporarily enable an unverified Keycloak account merely to make `execute-actions-email` work. A separate fail-closed, one-time invitation and email-proof flow must be threat-modeled and validated while the Keycloak account remains disabled and database-inactive. Only after independent proof of email ownership, credential readiness and authorization checks may the existing guarded activation coordinator be invoked. No such flow is implemented by this PR.
