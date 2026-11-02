@@ -416,6 +416,47 @@ jobs:
             END;
           END $subject_snapshot$;
           SQL
+      - name: Validate encrypted invitation outbox schema and idempotence
+        run: |
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/017_viewer_invitation_encrypted_outbox.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/017_viewer_invitation_encrypted_outbox.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO oryva.viewer_invitation_outbox
+              (challenge_id, key_id, nonce, ciphertext, auth_tag)
+          VALUES ('10000000-0000-0000-0000-000000000001', 'ci-v1',
+                  decode(repeat('AA', 12), 'hex'),
+                  decode(repeat('BB', 43), 'hex'),
+                  decode(repeat('CC', 16), 'hex'));
+          DO $encrypted_outbox$
+          BEGIN
+            BEGIN
+              INSERT INTO oryva.viewer_invitation_outbox
+                  (challenge_id, key_id, nonce, ciphertext, auth_tag)
+              VALUES ('10000000-0000-0000-0000-000000000006', 'bad key',
+                      decode(repeat('AA', 12), 'hex'),
+                      decode(repeat('BB', 43), 'hex'),
+                      decode(repeat('CC', 16), 'hex'));
+              RAISE EXCEPTION 'unsafe key identifier accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            BEGIN
+              INSERT INTO oryva.viewer_invitation_outbox
+                  (challenge_id, key_id, nonce, ciphertext, auth_tag)
+              VALUES ('10000000-0000-0000-0000-000000000006', 'ci-v1',
+                      decode(repeat('AA', 11), 'hex'),
+                      decode(repeat('BB', 43), 'hex'),
+                      decode(repeat('CC', 16), 'hex'));
+              RAISE EXCEPTION 'short AES-GCM nonce accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            BEGIN
+              UPDATE oryva.viewer_invitation_outbox SET state = 'cancelled'
+              WHERE challenge_id = '10000000-0000-0000-0000-000000000001';
+              RAISE EXCEPTION 'cancellation without timestamp accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+          END $encrypted_outbox$;
+          SQL
       - name: Verify singleton and state constraints
         run: |
           psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'

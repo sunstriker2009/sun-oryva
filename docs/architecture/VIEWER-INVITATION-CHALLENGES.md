@@ -62,3 +62,40 @@ This event ledger is **not** proof of SMTP delivery, email ownership verificatio
 The internal `ViewerInvitationIssue.Token` is excluded from ASP.NET Core's default `System.Text.Json` response contract (`[JsonIgnore]`) and data-contract serialization (`[IgnoreDataMember]`). `ToString()` also redacts the token. PostgreSQL integration E2E tests exercise direct, object-typed, web-default and nested JSON serialization.
 
 This is defense in depth, **not permission to return the issue object from an HTTP endpoint** or to log arbitrary object graphs. The plaintext token still exists transiently in memory and may be accessed by trusted code; custom serializers and explicit property access require separate review. A durable encrypted delivery outbox, SMTP transport, verified browser ceremony, credential enrollment and activation are **not implemented**.
+
+## Encrypted, transactional delivery outbox foundation (migration 017)
+
+`ViewerInvitationChallengeStore.IssueQueuedAsync` is an **internal-only** path
+that returns a metadata-only receipt. The generated 256-bit bearer token is
+encrypted using AES-256-GCM before being stored in
+`oryva.viewer_invitation_outbox`. Its challenge, append-only issuance audit
+and encrypted envelope are committed in one PostgreSQL transaction. If the
+outbox insert or audit fails, issuance and any previous challenge revocation
+roll back. The older `IssueAsync` method remains internal/test-facing and
+must **not** be wired to an HTTP endpoint.
+
+The key is supplied by a trusted runtime secret manager, never persisted in
+the outbox, migrations or repository. Each envelope includes a random 96-bit
+nonce, 128-bit authentication tag and non-secret key identifier. AEAD
+associated data binds the challenge ID, viewer ID, recipient email snapshot
+and key ID. Decryption rejects wrong keys, changed identities and tampering.
+Key rotation must retain the matching previous key until all pending
+envelopes using it have been cancelled or expired and securely purged.
+
+Reissuing a challenge cancels previous pending outbox rows within the same
+transaction; successful one-time consumption cancels the pending row too.
+The database currently permits only `pending` and `cancelled` states.
+There is **no SMTP sender, worker lease, retry, sent status or delivery claim**.
+The ciphertext must never be treated as a deliverable invitation without a
+future worker that locks the row, revalidates the live challenge, subject,
+recipient and expiry at handoff, implements idempotent retries, redacts logs,
+and safely handles revocation races. An email send cannot be atomically
+committed with a PostgreSQL transaction, so delivery remains an at-least-once
+operation requiring an explicit duplicate/retry policy.
+
+Migration 017 must be applied after 016 and is tested for idempotence,
+ciphertext shape, key identifier validation and cancellation constraints.
+The isolated PostgreSQL E2E covers AEAD tampering, identity binding,
+reissue/consumption cancellation and simulated outbox-insertion failure.
+No browser enrollment, email ownership proof, credential change, Keycloak
+activation or production delivery is authorized by this foundation.
