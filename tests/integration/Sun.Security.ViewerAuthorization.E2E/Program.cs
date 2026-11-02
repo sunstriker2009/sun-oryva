@@ -124,6 +124,88 @@ if (await viewers.IsActiveViewerSubjectAsync(subject, true))
 Console.WriteLine("PASS database revocation immediately denies previously valid viewer claims");
 await app.StopAsync();
 
+
+// Separate HTTP TestServer: exercises the actual ASP.NET Core rate-limiter
+// middleware without modifying any Keycloak identity or production database.
+var limitBuilder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    EnvironmentName = "Development"
+});
+limitBuilder.WebHost.UseTestServer();
+limitBuilder.Services.AddAuthentication("E2EViewer")
+    .AddScheme<AuthenticationSchemeOptions, ViewerTestAuthenticationHandler>(
+        "E2EViewer", _ => { });
+limitBuilder.Services.AddAuthorization();
+limitBuilder.Services.AddOryvaManagementRateLimiting(2);
+await using (var limitedApp = limitBuilder.Build())
+{
+    limitedApp.UseRouting();
+    limitedApp.UseAuthentication();
+    limitedApp.UseAuthorization();
+    limitedApp.UseRateLimiter();
+    limitedApp.MapPost("/test/write", () => Results.Ok())
+        .RequireAuthorization()
+        .RequireRateLimiting(OryvaManagementRateLimiting.PolicyName);
+    limitedApp.MapPost("/test/write-two", () => Results.Ok())
+        .RequireAuthorization()
+        .RequireRateLimiting(OryvaManagementRateLimiting.PolicyName);
+    limitedApp.MapGet("/test/read", () => Results.Ok())
+        .RequireAuthorization();
+    await limitedApp.StartAsync();
+    using var limitedClient = limitedApp.GetTestClient();
+
+    async Task<HttpResponseMessage> RequestAsync(
+        HttpMethod method, string route, string? caller, string? forwarded = null)
+    {
+        using var request = new HttpRequestMessage(method, route);
+        if (caller is not null) request.Headers.Add("X-Test-Subject", caller);
+        if (forwarded is not null) request.Headers.Add("X-Forwarded-For", forwarded);
+        return await limitedClient.SendAsync(request);
+    }
+
+    using (var anonymous = await RequestAsync(HttpMethod.Post, "/test/write", null))
+        if (anonymous.StatusCode != HttpStatusCode.Unauthorized)
+            throw new Exception("Unauthenticated management write was not denied.");
+    using (var first = await RequestAsync(HttpMethod.Post, "/test/write", "manager-a"))
+        if (first.StatusCode != HttpStatusCode.OK)
+            throw new Exception("First management write was unexpectedly limited.");
+    using (var second = await RequestAsync(HttpMethod.Post, "/test/write-two", "manager-a"))
+        if (second.StatusCode != HttpStatusCode.OK)
+            throw new Exception("Second management write was unexpectedly limited.");
+    using (var rejected = await RequestAsync(
+        HttpMethod.Post, "/test/write", "manager-a", "203.0.113.44"))
+    {
+        if (rejected.StatusCode != HttpStatusCode.TooManyRequests ||
+            !(await rejected.Content.ReadAsStringAsync()).Contains(
+                "management_rate_limit_exceeded", StringComparison.Ordinal) ||
+            rejected.Headers.CacheControl?.NoStore != true)
+            throw new Exception("Shared management write quota did not return a safe 429.");
+    }
+    using (var other = await RequestAsync(HttpMethod.Post, "/test/write", "manager-b"))
+        if (other.StatusCode != HttpStatusCode.OK)
+            throw new Exception("One manager exhausted another manager's quota.");
+    using (var read = await RequestAsync(HttpMethod.Get, "/test/read", "manager-a"))
+        if (read.StatusCode != HttpStatusCode.OK)
+            throw new Exception("Read-only route should not consume write quota.");
+    await limitedApp.StopAsync();
+}
+var goodPrincipal = new ClaimsPrincipal(new ClaimsIdentity(
+    [new Claim("sub", "subject-one")], "test"));
+var duplicatePrincipal = new ClaimsPrincipal(new ClaimsIdentity(
+    [new Claim("sub", "subject-one"), new Claim("sub", "subject-two")], "test"));
+if (OryvaManagementRateLimiting.GetPartitionKey(goodPrincipal) != "subject:subject-one" ||
+    OryvaManagementRateLimiting.GetPartitionKey(duplicatePrincipal) != "invalid-subject" ||
+    OryvaManagementRateLimiting.GetPartitionKey(new ClaimsPrincipal()) != "invalid-subject")
+    throw new Exception("Rate-limit partitioning must fail closed for ambiguous identities.");
+foreach (var invalidLimit in new[] { 0, 121 })
+{
+    var rejected = false;
+    try { new ServiceCollection().AddOryvaManagementRateLimiting(invalidLimit); }
+    catch (ArgumentOutOfRangeException) { rejected = true; }
+    if (!rejected) throw new Exception("Invalid management write limit was accepted.");
+}
+Console.WriteLine("PASS management HTTP write quota, isolation, read exclusion and fail-closed identity");
+
 sealed class ViewerTestAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory logger, UrlEncoder encoder)
