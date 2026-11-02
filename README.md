@@ -4,7 +4,7 @@
 
 ORYVA is an independently deployable identity and security platform with reusable ASP.NET Core and React/Next.js integration packages. MarketPilot AI is its first planned consumer, not a dependency.
 
-**Status (2026-11-01):** Backend v1 is **in progress**, not production-ready. Sole-master bootstrap, signed Keycloak JWT authorization, database-backed active admin/viewer access, guarded admin/viewer provisioning, activation and database-first revocation are implemented and integration-tested. Viewer reservation and preparation audit events are atomic. PostgreSQL-backed cross-replica management write quotas are implemented and tested ([PR #75](https://github.com/sunstriker2009/sun-oryva/pull/75)). **Secure invitations, user-controlled credential enrollment, password change/recovery, complete lifecycle auditing, distributed management-write throttling is implemented and tested; **edge, invitation, login and recovery abuse protection**, least-privilege production Keycloak configuration, release gates and deployment hardening remain outstanding.** Browser OIDC integration, React UI and consumer integration are separate unfinished workstreams.
+**Status (2026-11-01):** Backend v1 is **in progress**, not production-ready. Sole-master bootstrap, signed Keycloak JWT authorization, database-backed active admin/viewer access, guarded provisioning, activation, database-first revocation, atomic viewer reservation/preparation audits and PostgreSQL-backed cross-replica management write quotas are implemented and integration-tested. **Secure invitations, user-controlled credential enrollment, password change/recovery, complete lifecycle auditing, edge/login/recovery abuse protection, production Keycloak least-privilege configuration and final release gates remain outstanding.** Browser OIDC integration, React UI and consumer integration are separate unfinished workstreams.
 
 ## Implemented foundations
 - Keycloak realm, PostgreSQL master reservation, and distributed provisioning lock.
@@ -18,6 +18,7 @@ ORYVA is an independently deployable identity and security platform with reusabl
 - [Active-master authorization](docs/architecture/ACTIVE-MASTER-AUTHORIZATION.md)
 - [Protected API](docs/architecture/PROTECTED-API.md)
 - [Security model](docs/architecture/SECURITY-MODEL.md)
+- [Keycloak ownership-profile deployment gate](docs/operations/KEYCLOAK-USER-PROFILE.md)
 - [Integration boundaries](docs/architecture/INTEGRATION.md)
 - [Milestones](docs/roadmap/MILESTONES.md)
 - [Master development checklist](MASTER-CHECKLIST.md)
