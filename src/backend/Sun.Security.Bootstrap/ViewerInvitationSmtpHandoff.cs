@@ -56,6 +56,20 @@ public sealed class ViewerInvitationSmtpHandoff(
                 return false;
         }
 
+        // Match the established viewer -> challenge -> outbox lock order.
+        // A single multi-table FOR UPDATE can acquire row locks in a plan-
+        // dependent order and deadlock with consumption or reissue.
+        await using (var challengeLock = new NpgsqlCommand("""
+            SELECT 1 FROM oryva.viewer_invitation_challenges
+            WHERE id = @challenge AND viewer_id = @viewer FOR UPDATE;
+            """, connection, transaction))
+        {
+            challengeLock.Parameters.AddWithValue("challenge", lease.ChallengeId);
+            challengeLock.Parameters.AddWithValue("viewer", viewerId);
+            if (await challengeLock.ExecuteScalarAsync(cancellationToken) is null)
+                return false;
+        }
+
         string recipient;
         ViewerInvitationEncryptedToken envelope;
         int attemptCount;
@@ -74,7 +88,7 @@ public sealed class ViewerInvitationSmtpHandoff(
               AND viewer.id = @viewer AND viewer.state = 'role_assigned'
               AND viewer.keycloak_subject_id = challenge.keycloak_subject_snapshot
               AND lower(viewer.email) = lower(challenge.recipient_email)
-            FOR UPDATE OF challenge, delivery;
+            FOR UPDATE OF delivery;
             """, connection, transaction))
         {
             gate.Parameters.AddWithValue("challenge", lease.ChallengeId);
