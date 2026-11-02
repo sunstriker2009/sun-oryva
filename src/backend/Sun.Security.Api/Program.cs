@@ -36,8 +36,9 @@ if (writeLimitSetting is not null &&
      configuredLimit is < 1 or > 120))
     throw new InvalidOperationException(
         "ORYVA_MANAGEMENT_WRITE_LIMIT_PER_MINUTE must be an integer between 1 and 120.");
-builder.Services.AddOryvaManagementRateLimiting(
-    writeLimitSetting is null ? 10 : int.Parse(writeLimitSetting));
+var managementWriteLimit = writeLimitSetting is null ? 10 : int.Parse(writeLimitSetting);
+builder.Services.AddOryvaManagementRateLimiting(managementWriteLimit);
+builder.Services.AddOryvaDistributedManagementWriteQuota();
 
 
 // Optional management configuration: endpoints are not exposed unless all
@@ -75,6 +76,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 // Authenticate and authorize before consuming the caller's write quota.
 app.UseRateLimiter();
+app.UseOryvaDistributedManagementWriteQuota(managementWriteLimit);
 
 // Anonymous liveness probe; deliberately exposes no identity information.
 app.MapGet("/health/live", () => Results.Ok(new { status = "alive" }))
