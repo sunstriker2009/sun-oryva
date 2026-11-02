@@ -507,6 +507,58 @@ try
         (await LoadOutboxAsync(deniedQueued.Id)).State != "cancelled" ||
         await MailpitTotalAsync() != deniedBefore)
         throw new Exception("Dispatcher sent or retained a deactivated viewer invitation.");
+    // Internal monitoring is aggregate-only: no mailbox, bearer or identity
+    // is read or returned. Test each state transition against a baseline.
+    var health = new ViewerInvitationOutboxHealthStore(source);
+    var healthBefore = await health.ReadAsync();
+    var healthViewer = await SeedAsync("role_assigned");
+    var healthQueued = await store.IssueQueuedAsync(
+        healthViewer, "ci-master", "master", encryption);
+    var healthPending = await health.ReadAsync();
+    if (healthPending.Pending != healthBefore.Pending + 1 ||
+        healthPending.DuePending != healthBefore.DuePending + 1 ||
+        healthPending.RelayAccepted != healthBefore.RelayAccepted)
+        throw new Exception("Outbox health pending/due counters are incorrect.");
+    var healthJson = JsonSerializer.Serialize(healthPending);
+    if (healthJson.Contains(healthQueued.Id.ToString(), StringComparison.OrdinalIgnoreCase) ||
+        healthJson.Contains("example.invalid", StringComparison.OrdinalIgnoreCase) ||
+        healthJson.Contains("ciphertext", StringComparison.OrdinalIgnoreCase) ||
+        healthJson.Contains("subject", StringComparison.OrdinalIgnoreCase))
+        throw new Exception("Outbox health snapshot exposed per-invitation data.");
+
+    await ExecuteAsync("""
+        UPDATE oryva.viewer_invitation_outbox
+        SET attempt_count = 2,
+            next_attempt_at = clock_timestamp() + interval '1 hour'
+        WHERE challenge_id = @id;
+        """, healthQueued.Id);
+    var healthRetry = await health.ReadAsync();
+    if (healthRetry.RetryPending != healthBefore.RetryPending + 1 ||
+        healthRetry.DuePending != healthBefore.DuePending)
+        throw new Exception("Outbox health delayed retry counters are incorrect.");
+
+    await ExecuteAsync("""
+        UPDATE oryva.viewer_invitation_outbox
+        SET state = 'leased', lease_id = gen_random_uuid(),
+            lease_expires_at = clock_timestamp() - interval '1 second',
+            attempt_count = 5
+        WHERE challenge_id = @id;
+        """, healthQueued.Id);
+    var healthExpired = await health.ReadAsync();
+    if (healthExpired.Leased != healthBefore.Leased + 1 ||
+        healthExpired.ExpiredLeases != healthBefore.ExpiredLeases + 1 ||
+        healthExpired.ExhaustedUnsent != healthBefore.ExhaustedUnsent + 1 ||
+        healthExpired.Pending != healthBefore.Pending)
+        throw new Exception("Outbox health expired/exhausted lease counters are incorrect.");
+    if (await leasing.SweepInvalidAsync() < 1)
+        throw new Exception("Exhausted monitoring fixture was not cancelled.");
+    var healthAfter = await health.ReadAsync();
+    if (healthAfter.Cancelled < healthBefore.Cancelled + 1 ||
+        healthAfter.ExpiredLeases != healthBefore.ExpiredLeases ||
+        healthAfter.ExhaustedUnsent != healthBefore.ExhaustedUnsent)
+        throw new Exception("Outbox health cancellation counters are incorrect.");
+    Console.WriteLine("PASS aggregate-only outbox health: due, retry, stale lease, exhaustion and cancellation");
+
     Console.WriteLine("PASS explicit Mailpit dispatch: concurrent single acceptance, delayed retry and deactivation sweep");
 
     Console.WriteLine("PASS isolated Mailpit SMTP acceptance, lease fencing, audit and ambiguous retry");
