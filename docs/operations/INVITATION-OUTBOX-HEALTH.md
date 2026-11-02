@@ -46,3 +46,29 @@ Keycloak account; abuse limits; least-privilege grants; operational incident
 response and final security review. The sole-master, master-only admin
 creation, master/admin viewer management and read-only viewer invariants are
 unchanged.
+
+## Explicit, opt-in threshold evaluation
+
+`ViewerInvitationOutboxAlertPolicy.Evaluate` interprets a fresh aggregate
+snapshot using **operator-provided** positive thresholds for due pending
+deliveries, pending retries, expired leases, and exhausted unsent attempts.
+The first two produce warning signals; the latter two produce critical
+signals, with critical taking precedence. An outdated snapshot (older than
+the configured maximum age), or a snapshot more than 30 seconds in the
+future, produces `Unknown` rather than an apparent healthy result.
+Malformed, inconsistent or non-UTC samples fail closed with an exception.
+
+`NoThresholdExceeded` means only that the sampled counts were below the
+configured thresholds. It **does not** mean SMTP is reachable, that mail
+arrived, or that enrollment is safe. The policy is side-effect-free, has
+no default production thresholds, no alert publisher or scheduling, and
+never sends messages, opens endpoints or enables identities. Unit tests
+cover boundaries, precedence, stale/future samples and non-disclosure;
+the isolated PostgreSQL/Mailpit E2E exercises warning and critical
+evaluations against real outbox state transitions.
+
+Operators must choose thresholds from staging load and service objectives,
+route signals to an authenticated monitoring platform, and validate
+alert delivery and incident escalation before claiming production alerting.
+Database sampling errors must be surfaced as monitoring failures, never
+replaced with zero counters.

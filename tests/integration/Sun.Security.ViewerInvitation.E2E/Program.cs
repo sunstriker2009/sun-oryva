@@ -511,10 +511,24 @@ try
     // is read or returned. Test each state transition against a baseline.
     var health = new ViewerInvitationOutboxHealthStore(source);
     var healthBefore = await health.ReadAsync();
+    // Thresholds are explicit and relative to this isolated database baseline.
+    // The evaluator is pure: it cannot send mail or enable a Keycloak identity.
+    var alertThresholds = new ViewerInvitationOutboxAlertThresholds(
+        healthBefore.DuePending + 1, healthBefore.RetryPending + 1,
+        healthBefore.ExpiredLeases + 1, healthBefore.ExhaustedUnsent + 1,
+        TimeSpan.FromMinutes(2));
+    ViewerInvitationOutboxAlertEvaluation EvaluateHealth(
+        ViewerInvitationOutboxHealthSnapshot sample) =>
+        ViewerInvitationOutboxAlertPolicy.Evaluate(sample, alertThresholds, DateTime.UtcNow);
+
     var healthViewer = await SeedAsync("role_assigned");
     var healthQueued = await store.IssueQueuedAsync(
         healthViewer, "ci-master", "master", encryption);
     var healthPending = await health.ReadAsync();
+    if (EvaluateHealth(healthPending).Severity != ViewerInvitationOutboxAlertSeverity.Warning ||
+        !EvaluateHealth(healthPending).Reasons.HasFlag(ViewerInvitationOutboxAlertReasons.DueBacklog))
+        throw new Exception("Live pending outbox did not trigger the configured warning.");
+
     if (healthPending.Pending != healthBefore.Pending + 1 ||
         healthPending.DuePending != healthBefore.DuePending + 1 ||
         healthPending.RelayAccepted != healthBefore.RelayAccepted)
@@ -533,6 +547,10 @@ try
         WHERE challenge_id = @id;
         """, healthQueued.Id);
     var healthRetry = await health.ReadAsync();
+    if (EvaluateHealth(healthRetry).Severity != ViewerInvitationOutboxAlertSeverity.Warning ||
+        !EvaluateHealth(healthRetry).Reasons.HasFlag(ViewerInvitationOutboxAlertReasons.RetryBacklog))
+        throw new Exception("Live retry outbox did not trigger the configured warning.");
+
     if (healthRetry.RetryPending != healthBefore.RetryPending + 1 ||
         healthRetry.DuePending != healthBefore.DuePending)
         throw new Exception("Outbox health delayed retry counters are incorrect.");
@@ -545,6 +563,14 @@ try
         WHERE challenge_id = @id;
         """, healthQueued.Id);
     var healthExpired = await health.ReadAsync();
+    var expiredAlert = EvaluateHealth(healthExpired);
+    if (expiredAlert.Severity != ViewerInvitationOutboxAlertSeverity.Critical ||
+        !expiredAlert.Reasons.HasFlag(ViewerInvitationOutboxAlertReasons.ExpiredLeases) ||
+        !expiredAlert.Reasons.HasFlag(ViewerInvitationOutboxAlertReasons.ExhaustedUnsent))
+        throw new Exception("Live expired/exhausted lease did not trigger critical alert.");
+    if (JsonSerializer.Serialize(expiredAlert).Contains("example.invalid", StringComparison.OrdinalIgnoreCase))
+        throw new Exception("Aggregate alert exposed a recipient.");
+
     if (healthExpired.Leased != healthBefore.Leased + 1 ||
         healthExpired.ExpiredLeases != healthBefore.ExpiredLeases + 1 ||
         healthExpired.ExhaustedUnsent != healthBefore.ExhaustedUnsent + 1 ||
@@ -553,6 +579,9 @@ try
     if (await leasing.SweepInvalidAsync() < 1)
         throw new Exception("Exhausted monitoring fixture was not cancelled.");
     var healthAfter = await health.ReadAsync();
+    if (EvaluateHealth(healthAfter).Severity != ViewerInvitationOutboxAlertSeverity.NoThresholdExceeded)
+        throw new Exception("Swept delivery still triggered a new threshold.");
+
     if (healthAfter.Cancelled < healthBefore.Cancelled + 1 ||
         healthAfter.ExpiredLeases != healthBefore.ExpiredLeases ||
         healthAfter.ExhaustedUnsent != healthBefore.ExhaustedUnsent)
