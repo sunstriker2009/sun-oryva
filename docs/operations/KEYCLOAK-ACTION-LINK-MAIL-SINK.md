@@ -1,0 +1,11 @@
+# Disabled Keycloak action-link mail-sink probe
+
+**Scope:** CI-only behavioral evidence for Keycloak 26.3.5. **Not an invitation API, self-service enrollment implementation, or production rollout approval.**
+
+The full-stack GitHub Actions job starts an isolated Mailpit SMTP sink on a private Docker network. Before CI relaxes email verification for unrelated JWT fixtures, `keycloak_disabled_action_link_e2e.py` creates one randomly named, disabled and unverified identity with `VERIFY_EMAIL` and `UPDATE_PASSWORD` actions. It temporarily configures the isolated realm's SMTP host to `oryva-e2e-mailpit:1025` and calls Keycloak's `execute-actions-email` endpoint.
+
+The probe records whether Keycloak rejects that request or sends an email to `example.invalid`. When an email arrives, it extracts an action-token URL only if the scheme, authority and path match the isolated Keycloak instance, and follows the first GET without submitting a password, a verification form, or any other user input. The URL and token are **never printed**. The test verifies that the identity remains disabled, unverified, without a password and without sessions, and deletes it and restores SMTP configuration in a `finally` block. The Mailpit container is ephemeral and has no external SMTP relay.
+
+**This does not establish** that a disabled user can complete the verification and password-setting forms, that action links are single-use, that replay and expiry are enforced, that browser cookie/CSRF flows are safe, or that invitation endpoints are production-ready. The test deliberately never enables any identity. A full browser-compatible, mail-sink enrollment/replay/expiry E2E and threat review are still required. If disabled identities cannot complete required actions, a separate fail-closed enrollment state and explicit activation policy must be designed rather than silently enabling an unverified user.
+
+**Release gate:** Do not expose an invitation endpoint or mark credential enrollment complete based solely on this probe. Preserve sole-master creation of admins, master/admin management of viewers, viewer read-only authorization, database-backed active-state checks and Keycloak ownership validation.
