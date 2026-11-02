@@ -449,6 +449,66 @@ try
     catch (ArgumentException) { }
     if (await MailpitTotalAsync() != noMailBaseline)
         throw new Exception("Invalid handoff sent an unexpected SMTP message.");
+    // Explicit, single-iteration dispatch is NOT a hosted service. The only
+    // configured transport is the isolated loopback Mailpit test sink.
+    var dispatcher = new ViewerInvitationDispatchOnce(leasing, mailHandoff);
+    if (await dispatcher.RunOnceAsync() != ViewerInvitationDispatchResult.NoEligibleDelivery)
+        throw new Exception("Empty dispatch unexpectedly found a deliverable invitation.");
+
+    var dispatchViewer = await SeedAsync("role_assigned");
+    var dispatchQueued = await store.IssueQueuedAsync(
+        dispatchViewer, "ci-master", "master", encryption);
+    var dispatchBefore = await MailpitTotalAsync();
+    var dispatchOutcomes = await Task.WhenAll(
+        Enumerable.Range(0, 8).Select(_ => dispatcher.RunOnceAsync()));
+    if (dispatchOutcomes.Count(x => x == ViewerInvitationDispatchResult.RelayAccepted) != 1 ||
+        dispatchOutcomes.Any(x => x != ViewerInvitationDispatchResult.RelayAccepted &&
+                                  x != ViewerInvitationDispatchResult.NoEligibleDelivery) ||
+        await MailpitTotalAsync() != dispatchBefore + 1 ||
+        (await LoadOutboxAsync(dispatchQueued.Id)).State != "sent" ||
+        await dispatcher.RunOnceAsync() != ViewerInvitationDispatchResult.NoEligibleDelivery)
+        throw new Exception("Concurrent dispatch iterations did not accept exactly one SMTP message.");
+
+    // A simulated SMTP error must be classified without exposing its bearer
+    // and must be released through the fenced, delayed retry path.
+    var retryViewer = await SeedAsync("role_assigned");
+    var retryQueued = await store.IssueQueuedAsync(
+        retryViewer, "ci-master", "master", encryption);
+    var retryBefore = await MailpitTotalAsync();
+    var failedDispatcher = new ViewerInvitationDispatchOnce(
+        leasing, new ViewerInvitationSmtpHandoff(
+            source, encryption, new CiFailingInvitationTransport()));
+    if (await failedDispatcher.RunOnceAsync() !=
+            ViewerInvitationDispatchResult.TransportRetryScheduled ||
+        (await LoadOutboxAsync(retryQueued.Id)).State != "pending" ||
+        await MailpitTotalAsync() != retryBefore ||
+        await dispatcher.RunOnceAsync() != ViewerInvitationDispatchResult.NoEligibleDelivery)
+        throw new Exception("Ambiguous SMTP failure bypassed delayed, fenced retry.");
+    await ExecuteAsync("""
+        UPDATE oryva.viewer_invitation_outbox
+        SET next_attempt_at = clock_timestamp() - interval '1 second'
+        WHERE challenge_id = @id;
+        """, retryQueued.Id);
+    if (await dispatcher.RunOnceAsync() != ViewerInvitationDispatchResult.RelayAccepted ||
+        (await LoadOutboxAsync(retryQueued.Id)).State != "sent" ||
+        await MailpitTotalAsync() != retryBefore + 1)
+        throw new Exception("Released invitation did not retry through guarded SMTP handoff.");
+
+    // State change before dispatch is swept without decrypting or emailing.
+    var deniedViewer = await SeedAsync("role_assigned");
+    var deniedQueued = await store.IssueQueuedAsync(
+        deniedViewer, "ci-master", "master", encryption);
+    var deniedBefore = await MailpitTotalAsync();
+    await ExecuteAsync("""
+        UPDATE oryva.viewer_accounts SET state = 'deactivation_pending'
+        WHERE id = @id;
+        """, deniedViewer);
+    if (await dispatcher.RunOnceAsync() != ViewerInvitationDispatchResult.NoEligibleDelivery ||
+        (await LoadOutboxAsync(deniedQueued.Id)).State != "cancelled" ||
+        await MailpitTotalAsync() != deniedBefore)
+        throw new Exception("Dispatcher sent or retained a deactivated viewer invitation.");
+    Console.WriteLine("PASS explicit Mailpit dispatch: concurrent single acceptance, delayed retry and deactivation sweep");
+
     Console.WriteLine("PASS isolated Mailpit SMTP acceptance, lease fencing, audit and ambiguous retry");
 
 
