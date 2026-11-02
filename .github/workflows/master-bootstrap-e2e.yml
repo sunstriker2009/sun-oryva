@@ -94,6 +94,9 @@ jobs:
       - name: Initialize atomic viewer reservation audit schema
         run: |
           PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/011_viewer_reservation_audit.sql
+      - name: Initialize atomic viewer preparation audit schema
+        run: |
+          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/012_viewer_preparation_audit.sql
       - name: Run actual .NET bootstrap against Keycloak and PostgreSQL
         run: dotnet run --project tests/integration/Sun.Security.Bootstrap.E2E/Sun.Security.Bootstrap.E2E.csproj -c Release
       - name: Run viewer authorization PostgreSQL and HTTP E2E

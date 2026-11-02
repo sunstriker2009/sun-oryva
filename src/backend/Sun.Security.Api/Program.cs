@@ -151,11 +151,14 @@ if (managementConfigured)
         System.Security.Claims.ClaimsPrincipal principal,
         CancellationToken cancellationToken) =>
     {
-        if (await ViewerManagerAuthorization.GetActorRoleAsync(authorization, principal) is null)
+        var actorRole = await ViewerManagerAuthorization.GetActorRoleAsync(authorization, principal);
+        if (actorRole is null) return Results.Forbid();
+        var subjects = principal.FindAll("sub").Select(x => x.Value).ToArray();
+        if (subjects.Length != 1 || string.IsNullOrWhiteSpace(subjects[0]))
             return Results.Forbid();
         try
         {
-            var result = await coordinator.RecoverAsync(id, cancellationToken);
+            var result = await coordinator.RecoverAsync(id, subjects[0], actorRole, cancellationToken);
             return result is null ? Results.NotFound() :
                 Results.Ok(new { provisioningId = result.Id, status = result.State });
         }

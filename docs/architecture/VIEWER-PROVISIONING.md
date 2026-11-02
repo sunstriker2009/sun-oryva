@@ -5,7 +5,8 @@ Apply `infrastructure/postgres/007_viewer_authorization.sql` and then
 `infrastructure/postgres/008_viewer_role_assignment.sql` and then
 `infrastructure/postgres/009_viewer_activation.sql` and then
 `infrastructure/postgres/010_viewer_deactivation.sql` and then
-`infrastructure/postgres/011_viewer_reservation_audit.sql` before enabling
+`infrastructure/postgres/011_viewer_reservation_audit.sql` and then
+`infrastructure/postgres/012_viewer_preparation_audit.sql` before enabling
 these endpoints. Keycloak must expose the `oryva.provisioning.id` custom user
 attribute to the management service account.
 
@@ -58,8 +59,13 @@ The existing append-only UPDATE/DELETE/TRUNCATE triggers protect the new
 event type. Older reservations are **not** backfilled with invented actor
 attribution; their prior audit history remains unchanged. Subsequent
 role/activation/revocation events retain their existing audit semantics.
-This does not yet audit the `prepared` transition or every failed external
-Keycloak operation. Those gaps and credential enrollment remain outstanding.
+Migration 012 also audits the verified `reserved` to `prepared` subject
+binding in the same SQL statement, attributing the **actual authenticated
+master/admin performing recovery** rather than the original requester.
+Idempotent recovery emits no duplicate event. An audit failure rolls back
+the state change and subject binding. Existing prepared rows are not
+retroactively assigned invented actors. External Keycloak failures and
+credential enrollment remain outside this audit increment.
 
 ## Guarded role assignment
 
@@ -204,7 +210,7 @@ No production credential enrollment, email verification, invitation or
 production account enablement is added. Viewer deactivation is limited to
 already active, owned identities; broader recovery tooling remains outstanding. Guarded activation
 requires previously completed external enrollment and verification.
-Before production, extend durable audit coverage to preparation and lifecycle transitions,
+Before production, extend durable audit coverage to failed external operations and remaining lifecycle transitions,
 stable error contracts for external Keycloak failures,
 rate limiting and operational recovery. HTTP authorization E2E covers the active-admin and role-conflict branches; active-master management E2E remains outstanding.
 
