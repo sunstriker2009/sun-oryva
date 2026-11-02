@@ -21,7 +21,7 @@
 - [x] ORYVA-012 Distributed provisioning lock and concurrency checks.
 - [x] ORYVA-013 Full-stack Keycloak/PostgreSQL master bootstrap E2E ([PR #36](https://github.com/sunstriker2009/sun-oryva/pull/36)).
 - [ ] ORYVA-014 Production realm user-profile setup for `oryva.bootstrap.owner` and deployment runbook.
-- [ ] ORYVA-014a Effective Keycloak ownership-profile validation for both `oryva.bootstrap.owner` and `oryva.provisioning.id`, with explicit apply, CI-only disabled identity persistence test and [operator runbook](docs/operations/KEYCLOAK-USER-PROFILE.md). Implementation proposed; do not mark verified until PR CI passes. Production rollout and least-privilege review remain separate.
+- [x] ORYVA-014a Effective Keycloak ownership-profile validation for both `oryva.bootstrap.owner` and `oryva.provisioning.id`, explicit apply, isolated disabled identity persistence test and [operator runbook](docs/operations/KEYCLOAK-USER-PROFILE.md) ([PR #76](https://github.com/sunstriker2009/sun-oryva/pull/76); all five workflows passed on implementation commit `36161db8`, including Keycloak/PostgreSQL E2E). Production rollout and runtime least-privilege review remain separate and outstanding.
 
 ## M2 — authentication and active-master authorization
 - [x] ORYVA-015 Database-backed active-master subject authorization ([PR #37](https://github.com/sunstriker2009/sun-oryva/pull/37)).
