@@ -10,6 +10,9 @@ if (options.Host != "127.0.0.1" || options.Database != "oryva_e2e")
 await using var source = NpgsqlDataSource.Create(connectionString);
 var store = new ViewerInvitationChallengeStore(source);
 var seeded = new List<Guid>();
+var seededAdmin = Guid.NewGuid();
+var masterSeeded = false;
+var adminSeeded = false;
 
 async Task<Guid> SeedAsync(string state)
 {
@@ -78,6 +81,33 @@ async Task AssertActorAsync(Guid challengeId, string eventType, string? subject,
 
 try
 {
+    // Seed only isolated CI database actors; no Keycloak identity is enabled.
+    // The real JWT validation boundary remains the responsibility of the API.
+    await using (var connection = await source.OpenConnectionAsync())
+    await using (var master = new NpgsqlCommand("""
+        INSERT INTO oryva.master_bootstrap
+            (singleton_id, state, subject_id, activated_at)
+        VALUES (1, 'active', 'ci-master', now());
+        """, connection))
+    {
+        await master.ExecuteNonQueryAsync();
+        masterSeeded = true;
+    }
+    await using (var connection = await source.OpenConnectionAsync())
+    await using (var admin = new NpgsqlCommand("""
+        INSERT INTO oryva.admin_provisioning
+            (id, username, email, requested_by_subject, keycloak_subject_id, state)
+        VALUES (@id, @username, @email, 'ci-master', 'ci-admin', 'active');
+        """, connection))
+    {
+        var name = "invitation-admin-" + seededAdmin.ToString("N");
+        admin.Parameters.AddWithValue("id", seededAdmin);
+        admin.Parameters.AddWithValue("username", name);
+        admin.Parameters.AddWithValue("email", name + "@example.invalid");
+        await admin.ExecuteNonQueryAsync();
+        adminSeeded = true;
+    }
+
     var prepared = await SeedAsync("prepared");
     await ExpectDeniedAsync(() => store.IssueAsync(prepared, "ci-master", "master"));
     Console.WriteLine("PASS unassigned viewer cannot receive invitation challenge");
@@ -86,7 +116,11 @@ try
     var other = await SeedAsync("role_assigned");
     await ExpectDeniedAsync(() => store.IssueAsync(viewer, "ci-viewer", "viewer"));
     await ExpectDeniedAsync(() => store.IssueAsync(viewer, "", "admin"));
-    Console.WriteLine("PASS non-management actors rejected");
+    await ExpectDeniedAsync(() => store.IssueAsync(viewer, "ci-intruder", "master"));
+    await ExpectDeniedAsync(() => store.IssueAsync(viewer, "ci-intruder", "admin"));
+    await ExpectDeniedAsync(() => store.IssueAsync(viewer, "ci-admin", "master"));
+    await ExpectDeniedAsync(() => store.IssueAsync(viewer, "ci-master", "admin"));
+    Console.WriteLine("PASS forged, inactive and mismatched management actors rejected");
 
     var first = await store.IssueAsync(viewer, "ci-master", "master");
     if (first.Token.Length != 43 || first.ToString().Contains(first.Token))
@@ -99,6 +133,22 @@ try
     await AssertActorAsync(first.Id, "issued", "ci-master", "master");
     await AssertActorAsync(first.Id, "revoked", "ci-admin", "admin");
     await AssertActorAsync(second.Id, "issued", "ci-admin", "admin");
+
+    // Revoking an admin in PostgreSQL immediately denies new challenges,
+    // and a denied reissue must not revoke the existing valid challenge.
+    await ExecuteAsync("""
+        UPDATE oryva.admin_provisioning SET state = 'deactivation_pending'
+        WHERE id = @id;
+        """, seededAdmin);
+    await ExpectDeniedAsync(() => store.IssueAsync(viewer, "ci-admin", "admin"));
+    await ExecuteAsync("""
+        UPDATE oryva.admin_provisioning SET state = 'active'
+        WHERE id = @id;
+        """, seededAdmin);
+    if (await CountAuditAsync(second.Id, "revoked") != 0)
+        throw new Exception("Denied issuer unexpectedly revoked an outstanding challenge.");
+    Console.WriteLine("PASS database-first admin revocation denies issuance without mutation");
+
     if (await store.ConsumeAsync(viewer, first.Token))
         throw new Exception("Reissued challenge did not revoke the previous token.");
     if (await store.ConsumeAsync(other, second.Token) ||
@@ -230,5 +280,21 @@ finally
     {
         deleteViewers.Parameters.AddWithValue("ids", seeded.ToArray());
         await deleteViewers.ExecuteNonQueryAsync();
+    }
+    if (adminSeeded)
+    {
+        await using var deleteAdmin = new NpgsqlCommand("""
+            DELETE FROM oryva.admin_provisioning WHERE id = @id;
+            """, connection);
+        deleteAdmin.Parameters.AddWithValue("id", seededAdmin);
+        await deleteAdmin.ExecuteNonQueryAsync();
+    }
+    if (masterSeeded)
+    {
+        await using var deleteMaster = new NpgsqlCommand("""
+            DELETE FROM oryva.master_bootstrap
+            WHERE singleton_id = 1 AND subject_id = 'ci-master';
+            """, connection);
+        await deleteMaster.ExecuteNonQueryAsync();
     }
 }
