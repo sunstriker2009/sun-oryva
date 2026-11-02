@@ -329,6 +329,69 @@ jobs:
                   repeat('E', 64), 'audit@example.invalid',
                   'ci-admin', 'admin', now() + interval '15 minutes');
           SQL
+      - name: Validate append-only invitation event audit schema
+        run: |
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/015_viewer_invitation_audit.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/015_viewer_invitation_audit.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO oryva.viewer_invitation_audit
+              (challenge_id, viewer_id, event_type, actor_subject, actor_role)
+          VALUES ('10000000-0000-0000-0000-000000000001',
+                  '00000000-0000-0000-0000-000000000003',
+                  'issued', 'ci-master', 'master');
+          DO $invitation_audit$
+          BEGIN
+            BEGIN
+              INSERT INTO oryva.viewer_invitation_audit
+                  (challenge_id, viewer_id, event_type, actor_subject, actor_role)
+              VALUES ('10000000-0000-0000-0000-000000000002',
+                      '00000000-0000-0000-0000-000000000003',
+                      'issued', 'ci-viewer', 'viewer');
+              RAISE EXCEPTION 'viewer audit actor accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            BEGIN
+              INSERT INTO oryva.viewer_invitation_audit
+                  (challenge_id, viewer_id, event_type, actor_subject, actor_role)
+              VALUES ('10000000-0000-0000-0000-000000000004',
+                      '00000000-0000-0000-0000-000000000003',
+                      'issued', 'ci-master', NULL);
+              RAISE EXCEPTION 'missing management audit role accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            BEGIN
+              INSERT INTO oryva.viewer_invitation_audit
+                  (challenge_id, viewer_id, event_type, actor_subject, actor_role)
+              VALUES ('10000000-0000-0000-0000-000000000003',
+                      '00000000-0000-0000-0000-000000000003',
+                      'consumed', 'fake-recipient', 'viewer');
+              RAISE EXCEPTION 'unauthenticated consumption actor accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            BEGIN
+              INSERT INTO oryva.viewer_invitation_audit
+                  (challenge_id, viewer_id, event_type, actor_subject, actor_role)
+              VALUES ('10000000-0000-0000-0000-000000000001',
+                      '00000000-0000-0000-0000-000000000003',
+                      'issued', 'ci-master', 'master');
+              RAISE EXCEPTION 'duplicate event accepted';
+            EXCEPTION WHEN unique_violation THEN NULL;
+            END;
+            BEGIN
+              UPDATE oryva.viewer_invitation_audit
+                 SET actor_subject = 'tampered'
+               WHERE challenge_id = '10000000-0000-0000-0000-000000000001';
+              RAISE EXCEPTION 'audit mutation accepted' USING ERRCODE = '22000';
+            EXCEPTION WHEN raise_exception THEN NULL;
+            END;
+            BEGIN
+              DELETE FROM oryva.viewer_invitation_audit
+               WHERE challenge_id = '10000000-0000-0000-0000-000000000001';
+              RAISE EXCEPTION 'audit deletion accepted' USING ERRCODE = '22000';
+            EXCEPTION WHEN raise_exception THEN NULL;
+            END;
+          END $invitation_audit$;
+          SQL
       - name: Verify singleton and state constraints
         run: |
           psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'

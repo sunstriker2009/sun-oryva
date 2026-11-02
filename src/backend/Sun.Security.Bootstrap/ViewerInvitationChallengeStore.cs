@@ -52,13 +52,23 @@ public sealed class ViewerInvitationChallengeStore(NpgsqlDataSource dataSource)
                     "Only a subject-bound, role-assigned inactive viewer can receive a challenge.");
         }
 
+        // Revocation and its actor-attributed event share the issuance transaction.
+        // A failed audit insert rolls back the revocation and new challenge.
         await using (var revoke = new NpgsqlCommand("""
-            UPDATE oryva.viewer_invitation_challenges
-            SET revoked_at = now()
-            WHERE viewer_id = @id AND consumed_at IS NULL AND revoked_at IS NULL;
+            WITH revoked AS (
+                UPDATE oryva.viewer_invitation_challenges
+                SET revoked_at = now()
+                WHERE viewer_id = @viewer AND consumed_at IS NULL AND revoked_at IS NULL
+                RETURNING id
+            )
+            INSERT INTO oryva.viewer_invitation_audit
+                (challenge_id, viewer_id, event_type, actor_subject, actor_role)
+            SELECT id, @viewer, 'revoked', @actor, @role FROM revoked;
             """, connection, transaction))
         {
-            revoke.Parameters.AddWithValue("id", viewerId);
+            revoke.Parameters.AddWithValue("viewer", viewerId);
+            revoke.Parameters.AddWithValue("actor", actorSubject);
+            revoke.Parameters.AddWithValue("role", actorRole);
             await revoke.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -82,6 +92,19 @@ public sealed class ViewerInvitationChallengeStore(NpgsqlDataSource dataSource)
                 ?? throw new InvalidOperationException("Challenge insertion returned no expiry."));
         }
 
+        await using (var audit = new NpgsqlCommand("""
+            INSERT INTO oryva.viewer_invitation_audit
+                (challenge_id, viewer_id, event_type, actor_subject, actor_role)
+            VALUES (@challenge, @viewer, 'issued', @actor, @role);
+            """, connection, transaction))
+        {
+            audit.Parameters.AddWithValue("challenge", challengeId);
+            audit.Parameters.AddWithValue("viewer", viewerId);
+            audit.Parameters.AddWithValue("actor", actorSubject);
+            audit.Parameters.AddWithValue("role", actorRole);
+            await audit.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         await transaction.CommitAsync(cancellationToken);
         return new ViewerInvitationIssue(challengeId, token, expiresAt);
     }
@@ -102,7 +125,10 @@ public sealed class ViewerInvitationChallengeStore(NpgsqlDataSource dataSource)
                 return false;
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("""
+        await using var transaction =
+            (NpgsqlTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        Guid? consumedId;
+        await using (var command = new NpgsqlCommand("""
             UPDATE oryva.viewer_invitation_challenges AS challenge
             SET consumed_at = now()
             FROM oryva.viewer_accounts AS viewer
@@ -116,10 +142,31 @@ public sealed class ViewerInvitationChallengeStore(NpgsqlDataSource dataSource)
               AND viewer.keycloak_subject_id IS NOT NULL
               AND lower(viewer.email) = lower(challenge.recipient_email)
             RETURNING challenge.id;
-            """, connection);
-        command.Parameters.AddWithValue("viewer", viewerId);
-        command.Parameters.AddWithValue("digest", Digest(token));
-        return await command.ExecuteScalarAsync(cancellationToken) is Guid;
+            """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("viewer", viewerId);
+            command.Parameters.AddWithValue("digest", Digest(token));
+            consumedId = await command.ExecuteScalarAsync(cancellationToken) as Guid?;
+        }
+
+        if (consumedId is not Guid challengeId)
+            return false; // Disposing the transaction rolls back; no audit event.
+
+        // Possession of a bearer token is not authenticated identity.
+        // The audit intentionally has no actor, email, digest or token.
+        await using (var audit = new NpgsqlCommand("""
+            INSERT INTO oryva.viewer_invitation_audit
+                (challenge_id, viewer_id, event_type)
+            VALUES (@challenge, @viewer, 'consumed');
+            """, connection, transaction))
+        {
+            audit.Parameters.AddWithValue("challenge", challengeId);
+            audit.Parameters.AddWithValue("viewer", viewerId);
+            await audit.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return true;
     }
 }
 
