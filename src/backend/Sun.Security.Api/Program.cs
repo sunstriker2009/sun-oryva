@@ -30,6 +30,15 @@ builder.Services.AddScoped<ViewerDeactivationCoordinator>();
 builder.Services.AddOryvaKeycloakJwt(new OryvaJwtOptions { Issuer = issuer, Audience = audience });
 builder.Services.AddOryvaActiveMasterPolicy();
 builder.Services.AddOryvaRolePolicies();
+var writeLimitSetting = builder.Configuration["ORYVA_MANAGEMENT_WRITE_LIMIT_PER_MINUTE"];
+if (writeLimitSetting is not null &&
+    (!int.TryParse(writeLimitSetting, out var configuredLimit) ||
+     configuredLimit is < 1 or > 120))
+    throw new InvalidOperationException(
+        "ORYVA_MANAGEMENT_WRITE_LIMIT_PER_MINUTE must be an integer between 1 and 120.");
+builder.Services.AddOryvaManagementRateLimiting(
+    writeLimitSetting is null ? 10 : int.Parse(writeLimitSetting));
+
 
 // Optional management configuration: endpoints are not exposed unless all
 // settings are supplied. Never place service credentials in source control.
@@ -61,8 +70,11 @@ if (managementConfigured)
 }
 
 var app = builder.Build();
+app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
+// Authenticate and authorize before consuming the caller's write quota.
+app.UseRateLimiter();
 
 // Anonymous liveness probe; deliberately exposes no identity information.
 app.MapGet("/health/live", () => Results.Ok(new { status = "alive" }))
@@ -131,7 +143,7 @@ if (managementConfigured)
                 error = "Viewer preparation incomplete; reconcile the reserved identity."
             });
         }
-    }).RequireAuthorization();
+    }).RequireAuthorization().RequireRateLimiting(OryvaManagementRateLimiting.PolicyName);
 
     app.MapPost("/api/viewers/provisioning/{id:guid}/recover", async (
         Guid id, ViewerPreparationCoordinator coordinator,
@@ -151,7 +163,7 @@ if (managementConfigured)
         {
             return Results.Conflict(new { error = "Viewer ownership verification failed." });
         }
-    }).RequireAuthorization();
+    }).RequireAuthorization().RequireRateLimiting(OryvaManagementRateLimiting.PolicyName);
 
     // Viewer role assignment requires an active master or database-active admin.
     // The coordinator persists intent and verifies an exclusively viewer-mapped,
@@ -181,7 +193,7 @@ if (managementConfigured)
         {
             return Results.Conflict(new { error = "Viewer role assignment pending or rejected; inspect provisioning state." });
         }
-    }).RequireAuthorization();
+    }).RequireAuthorization().RequireRateLimiting(OryvaManagementRateLimiting.PolicyName);
 
     // Read-only viewer activation preflight. This result is not a grant or
     // authorization token; a future activation operation must recheck all gates.
@@ -233,7 +245,7 @@ if (managementConfigured)
         {
             return Results.Conflict(new { error = "Viewer activation pending or rejected; inspect provisioning state." });
         }
-    }).RequireAuthorization();
+    }).RequireAuthorization().RequireRateLimiting(OryvaManagementRateLimiting.PolicyName);
 
     // Revocation is committed in PostgreSQL before Keycloak disable/logout.
     // A stale viewer JWT cannot authorize after the pending state is committed.
@@ -262,7 +274,7 @@ if (managementConfigured)
         {
             return Results.Conflict(new { error = "Viewer deactivation pending or rejected; inspect provisioning state." });
         }
-    }).RequireAuthorization();
+    }).RequireAuthorization().RequireRateLimiting(OryvaManagementRateLimiting.PolicyName);
 
     app.MapGet("/api/viewers/provisioning/{id:guid}/audit", async (
         Guid id, ViewerAccountStore accounts,
@@ -313,7 +325,7 @@ if (managementConfigured)
         {
             return Results.Conflict(new { error = "Provisioning recovery already in progress." });
         }
-    }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
+    }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName).RequireRateLimiting(OryvaManagementRateLimiting.PolicyName);
 
     // Read-only preflight. The result is never an authorization token and
     // cannot enable an account; activation must repeat all checks.
@@ -351,7 +363,7 @@ if (managementConfigured)
         {
             return Results.Conflict(new { error = "Activation rejected; inspect provisioning state." });
         }
-    }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
+    }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName).RequireRateLimiting(OryvaManagementRateLimiting.PolicyName);
 
     // Database-first revocation: immediately denies existing admin JWTs,
     // then disables Keycloak identity and logs out sessions.
@@ -376,7 +388,7 @@ if (managementConfigured)
         {
             return Results.Conflict(new { error = "Deactivation pending or rejected; inspect provisioning state." });
         }
-    }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
+    }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName).RequireRateLimiting(OryvaManagementRateLimiting.PolicyName);
 
     // Assign only the admin realm role to a disabled, credentialless, owned
     // identity. Never enables the user or sends an invitation.
@@ -397,7 +409,7 @@ if (managementConfigured)
         {
             return Results.Conflict(new { error = "Role assignment rejected; inspect provisioning state." });
         }
-    }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
+    }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName).RequireRateLimiting(OryvaManagementRateLimiting.PolicyName);
 
     app.MapPost("/api/master/admins/prepare", async (
         PrepareAdminRequest input, KeycloakManagementClient management,
@@ -458,7 +470,7 @@ if (managementConfigured)
             status = "prepared",
             nextStep = "Assign the admin role, enroll credentials, then request guarded activation."
         });
-    }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName);
+    }).RequireAuthorization(ActiveMasterPolicyExtensions.PolicyName).RequireRateLimiting(OryvaManagementRateLimiting.PolicyName);
 }
 
 app.Run();
