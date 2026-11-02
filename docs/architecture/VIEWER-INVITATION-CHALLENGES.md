@@ -29,11 +29,11 @@ The recipient snapshot intentionally detects email changes after issuance. A dig
 
 **Do not** treat a consumed challenge as sufficient to call the activation endpoint. The existing activation readiness checks still require independently verified Keycloak email, credential and required actions. The separate browser credential enrollment protocol is unresolved and must be validated against real Keycloak with a local mail sink and browser-compatible E2E before exposing any public route.
 
-## Issuer authorization hardening (proposed in PR #83)
+## Issuer authorization hardening (verified PR #83)
 
 Issuance uses a shared lock on the matching active master singleton or active admin provisioning row inside the same PostgreSQL transaction that revokes and creates challenges. An admin deactivation update cannot commit while an already-authorized issuance holds this lock; once deactivation commits, subsequent issuance is denied. Missing, mismatched, pending and deactivated actors fail closed before any challenge mutation. The PostgreSQL E2E seeds isolated test actors, tests forged subjects and role mismatches, and confirms denied issuance does not revoke an outstanding token.
 
-This is defense in depth, **not** a public API or a replacement for JWT validation. The caller must authenticate and verify the exclusive master/admin realm role and token subject; the store accepts no unauthenticated public traffic. No email, Keycloak credential write or activation is added. This change must pass CI and be merged before it is considered delivered.
+This is defense in depth, **not** a public API or a replacement for JWT validation. The caller must authenticate and verify the exclusive master/admin realm role and token subject; the store accepts no unauthenticated public traffic. No email, Keycloak credential write or activation is added. [PR #83](https://github.com/sunstriker2009/sun-oryva/pull/83) passed all five PR workflows, including real PostgreSQL/Keycloak E2E, and was squash-merged as `937fd43f`. This does not unblock enrollment.
 
 ## Operations and validation
 
