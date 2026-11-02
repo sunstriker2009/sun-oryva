@@ -81,7 +81,7 @@ public static class OryvaDistributedManagementWriteQuotaExtensions
                 .GetMetadata<EnableRateLimitingAttribute>();
             if (policy?.PolicyName != OryvaManagementRateLimiting.PolicyName)
             {
-                await next(context);
+                await next();
                 return;
             }
 
@@ -126,7 +126,7 @@ public static class OryvaDistributedManagementWriteQuotaExtensions
                     context.RequestAborted);
                 return;
             }
-            await next(context);
+            await next();
         });
     }
 }
