@@ -59,7 +59,7 @@
 - [x] Database-first viewer deactivation and session revocation with durable recovery and audit ([PR #70](https://github.com/sunstriker2009/sun-oryva/pull/70); verified before merge).
 - [x] Transactional viewer reservation audit ([PR #72](https://github.com/sunstriker2009/sun-oryva/pull/72)); migration 011, real PostgreSQL/Keycloak E2E and schema validation passed all five workflows on implementation commit `c2f7babc`. Five post-merge `main` workflows passed on merge commit `0ea9a47d` (observed 2026-11-01). Preparation completion and failed Keycloak operations need additional audit coverage.
 - [ ] Secure viewer credential enrollment and invitations; full lifecycle and operational recovery tooling.
-- [ ] Atomic viewer preparation completion audit (migration 012) proposed; PR CI and merge not yet verified.
+- [ ] Atomic viewer preparation completion audit (migration 012, [PR #73](https://github.com/sunstriker2009/sun-oryva/pull/73)) implemented; five PR workflows passed on `4d2afea8` including full-stack Keycloak/PostgreSQL E2E. Merge and post-merge validation pending.
 - [ ] Password-change and account recovery policies, audit events, API error contracts, **distributed** rate limits, and full lifecycle security E2E.
 - [x] Process-local management write throttling with authenticated-subject partitioning and HTTP tests ([PR #71](https://github.com/sunstriker2009/sun-oryva/pull/71), latest PR CI verified; distributed quotas remain outstanding).
 - [ ] Production Keycloak permissions, operational migrations, threat review, release gates and deployment runbooks.
