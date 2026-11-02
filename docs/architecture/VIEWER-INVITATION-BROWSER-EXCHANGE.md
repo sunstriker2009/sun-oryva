@@ -1,6 +1,6 @@
 # Internal invitation-to-browser exchange (migration 020)
 
-**Status:** internal backend foundation only; not a public endpoint or a completed enrollment flow. Apply `infrastructure/postgres/020_viewer_invitation_browser_exchange.sql` after migration 019, before running the updated invitation issuance code.
+**Status:** internal backend foundation only; not a public endpoint or a completed enrollment flow. Apply `infrastructure/postgres/020_viewer_invitation_browser_exchange.sql` after migration 019, then `021_viewer_invitation_exchange_quotas.sql`, before running the updated invitation exchange code.
 
 ## Contract
 
@@ -9,6 +9,12 @@ A 256-bit invitation bearer secret can be exchanged **once**, while it is still 
 Both issuance and exchange enforce a subject-bound, `role_assigned` viewer and unchanged recipient email. Reissuing an invitation revokes any outstanding browser exchanges under the viewer lock. A PostgreSQL trigger also permanently revokes browser exchanges when the viewer's email, Keycloak subject or lifecycle state changes, **including when changed back**. Expiry is enforced against PostgreSQL time.
 
 The returned `ViewerInvitationBrowserExchange` intentionally redacts the secret from JSON and `ToString()`. No secret or plaintext email is written to the browser session table. The internal `IsLiveAsync` method is **point-in-time inspection only** and MUST NOT be used as authentication, a password-write permission or an activation gate.
+
+## Cross-replica exchange attempt quota (migration 021)
+
+The internal exchange now charges a PostgreSQL-backed, viewer-scoped, fixed 60-second window **before inspecting the invitation token**, including malformed and incorrect tokens. A row-level conflict update serializes concurrent attempts across API replicas. At most **32 attempts** are allowed per viewer per window; count 33 is the saturated sentinel, and repeated denials do not grow the counter. Failed or throttled exchanges return the same generic null result, with no token, email, source IP or Keycloak subject persisted in the quota row. Denied exchanges commit the quota charge without consuming the invitation; successful exchanges commit quota, invitation consumption and audit in the same transaction. Internal database errors fail closed.
+
+This is **not a complete public endpoint abuse defense**. A caller who knows a viewer ID can temporarily exhaust that viewer's quota. Before any public browser route, add separately reviewed distributed source-IP and global admission limits with trusted reverse-proxy configuration, generic HTTP responses, monitoring and abuse recovery. Never accept untrusted `X-Forwarded-For` as an identity key. The quota is not email verification, a session, a password-write grant or permission to enable Keycloak accounts.
 
 ## Threat boundaries and unfinished work
 
@@ -20,6 +26,6 @@ The returned `ViewerInvitationBrowserExchange` intentionally redacts the secret 
 
 ## Validation
 
-`tests/integration/Sun.Security.InvitationExchange.E2E` runs against isolated PostgreSQL and covers malformed/cross-viewer input, exactly-one-winner concurrency, audit and insert rollback, JSON non-disclosure, digest-only storage, expiry, reissue invalidation, subject/email change-away-and-back revocation and unchanged viewer activation state. The schema-validation workflow applies migration 020 twice and checks fail-closed constraints.
+`tests/integration/Sun.Security.InvitationExchange.E2E` runs against isolated PostgreSQL and covers malformed/cross-viewer input, exactly-one-winner concurrency, audit and insert rollback, JSON non-disclosure, digest-only storage, expiry, reissue invalidation, subject/email change-away-and-back revocation and unchanged viewer activation state. The schema-validation workflow applies migrations 020 and 021 twice and checks fail-closed constraints. The exchange E2E additionally verifies 48-way quota contention, persisted denials, saturation and window rollover without consuming a valid invitation.
 
 **Not delivered:** browser HTTP/cookie endpoints, email ownership verification against Keycloak, credential enrollment, password recovery, activation, production SMTP integration or release readiness. See [disabled-account enrollment gate](../operations/KEYCLOAK-DISABLED-ENROLLMENT.md) and the [master checklist](../../MASTER-CHECKLIST.md).

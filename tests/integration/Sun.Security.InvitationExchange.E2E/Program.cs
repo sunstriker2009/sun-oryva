@@ -208,12 +208,55 @@ try
         await exchange.ExchangeAsync(viewer, rollbackInvite.Token) is null)
         throw new Exception("Failed browser exchange did not roll back atomically.");
 
+    // The quota is PostgreSQL-backed, so concurrent replicas cannot bypass
+    // the cap. Invalid-shaped and valid-shaped wrong tokens both count, and
+    // a denied attempt must not consume the legitimate invitation.
+    var throttledViewer = await SeedViewerAsync();
+    var throttledInvitation = await invitations.IssueAsync(
+        throttledViewer, "ci-master", "master");
+    if (await exchange.ExchangeAsync(throttledViewer, "malformed") is not null)
+        throw new Exception("Malformed quota fixture unexpectedly succeeded.");
+    var wrongToken = new string('A', 43);
+    var wrongAttempts = await Task.WhenAll(Enumerable.Range(0, 48)
+        .Select(_ => exchange.ExchangeAsync(throttledViewer, wrongToken)));
+    if (wrongAttempts.Any(x => x is not null))
+        throw new Exception("Incorrect invitation token passed under contention.");
+    await using (var connection = await source.OpenConnectionAsync())
+    await using (var command = new NpgsqlCommand("""
+        SELECT attempt_count FROM oryva.viewer_invitation_exchange_quotas
+        WHERE viewer_id = @viewer;
+        """, connection))
+    {
+        command.Parameters.AddWithValue("viewer", throttledViewer);
+        if (Convert.ToInt32(await command.ExecuteScalarAsync()) != 33)
+            throw new Exception("Concurrent quota attempts did not saturate at 33.");
+    }
+    if (await exchange.ExchangeAsync(throttledViewer, throttledInvitation.Token) is not null ||
+        await ConsumedEventsAsync(throttledInvitation.Id) != 0)
+        throw new Exception("Saturated quota consumed a legitimate invitation.");
+    await using (var connection = await source.OpenConnectionAsync())
+    await using (var command = new NpgsqlCommand("""
+        UPDATE oryva.viewer_invitation_exchange_quotas
+        SET window_started_at = clock_timestamp() - interval '2 minutes'
+        WHERE viewer_id = @viewer;
+        """, connection))
+    {
+        command.Parameters.AddWithValue("viewer", throttledViewer);
+        await command.ExecuteNonQueryAsync();
+    }
+    var recovered = await exchange.ExchangeAsync(throttledViewer, throttledInvitation.Token);
+    if (recovered is null ||
+        !await exchange.IsLiveAsync(throttledViewer, recovered.BrowserSecret) ||
+        await ConsumedEventsAsync(throttledInvitation.Id) != 1)
+        throw new Exception("Quota window rollover did not restore valid exchange.");
+
     if (await GetViewerValueAsync(viewer, "state") != "role_assigned")
         throw new Exception("Browser exchange changed viewer activation state.");
 
     Console.WriteLine("PASS browser exchange one-time replay, cross-viewer denial, digest-only storage");
     Console.WriteLine("PASS reissue and change-away/back revocation, expiry, 16-way concurrency");
     Console.WriteLine("PASS transactional rollback, append-only consumption audit, no activation");
+    Console.WriteLine("PASS 48-way distributed quota contention, denial persistence, 60s rollover");
 }
 finally
 {

@@ -145,6 +145,9 @@ jobs:
       - name: Initialize internal browser exchange schema
         run: |
           PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/020_viewer_invitation_browser_exchange.sql
+      - name: Initialize cross-replica browser exchange quota schema
+        run: |
+          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/021_viewer_invitation_exchange_quotas.sql
       - name: Run isolated invitation-to-browser exchange PostgreSQL security E2E
         run: dotnet run --project tests/integration/Sun.Security.InvitationExchange.E2E/Sun.Security.InvitationExchange.E2E.csproj -c Release
       - name: Run one-time viewer invitation PostgreSQL security E2E
