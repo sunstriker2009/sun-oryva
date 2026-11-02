@@ -8,7 +8,8 @@ namespace Sun.Security.Bootstrap;
 
 /// <summary>
 /// Internal invitation bearer exchange into a separate five-minute browser
-/// secret. No HTTP endpoint, cookie, credential mutation, emailVerified update
+/// secret. A PostgreSQL per-viewer attempt quota is applied before checking
+/// the token. No HTTP endpoint, cookie, credential mutation, emailVerified update
 /// or Keycloak activation is provided. The future browser boundary MUST add
 /// origin/CSRF protection, HttpOnly/Secure/SameSite cookies, rate limits and
 /// an atomic, independently reviewed credential-completion ceremony.
@@ -42,8 +43,6 @@ public sealed class ViewerInvitationBrowserExchangeStore(NpgsqlDataSource dataSo
         Guid viewerId, string? invitationToken,
         CancellationToken cancellationToken = default)
     {
-        if (!IsTokenShape(invitationToken)) return null;
-
         var sessionId = Guid.NewGuid();
         var browserSecret = NewSecret();
 
@@ -63,6 +62,39 @@ public sealed class ViewerInvitationBrowserExchangeStore(NpgsqlDataSource dataSo
             viewerLock.Parameters.AddWithValue("viewer", viewerId);
             if (await viewerLock.ExecuteScalarAsync(cancellationToken) is null)
                 return null;
+        }
+
+        // Cross-replica fixed-window quota is charged even for malformed or
+        // incorrect tokens. The quota row serializes concurrent attempts, and
+        // denials COMMIT the charge; a rolled-back denial would not throttle.
+        // The cap is intentionally a separate defense from future HTTP/IP
+        // throttling and must never be interpreted as proof of email ownership.
+        await using (var quota = new NpgsqlCommand("""
+            INSERT INTO oryva.viewer_invitation_exchange_quotas AS quota
+                (viewer_id, window_started_at, attempt_count)
+            VALUES (@viewer, statement_timestamp(), 1)
+            ON CONFLICT (viewer_id) DO UPDATE SET
+                window_started_at = CASE
+                    WHEN quota.window_started_at <= statement_timestamp() - interval '1 minute'
+                    THEN statement_timestamp() ELSE quota.window_started_at END,
+                attempt_count = CASE
+                    WHEN quota.window_started_at <= statement_timestamp() - interval '1 minute'
+                    THEN 1 ELSE LEAST(quota.attempt_count + 1, 33) END
+            RETURNING attempt_count <= 32;
+            """, connection, transaction))
+        {
+            quota.Parameters.AddWithValue("viewer", viewerId);
+            if (await quota.ExecuteScalarAsync(cancellationToken) is not true)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return null;
+            }
+        }
+
+        if (!IsTokenShape(invitationToken))
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return null;
         }
 
         Guid challengeId;
@@ -85,7 +117,10 @@ public sealed class ViewerInvitationBrowserExchangeStore(NpgsqlDataSource dataSo
             consume.Parameters.AddWithValue("viewer", viewerId);
             consume.Parameters.AddWithValue("digest", Digest(invitationToken!));
             if (await consume.ExecuteScalarAsync(cancellationToken) is not Guid id)
+            {
+                await transaction.CommitAsync(cancellationToken);
                 return null;
+            }
             challengeId = id;
         }
 
