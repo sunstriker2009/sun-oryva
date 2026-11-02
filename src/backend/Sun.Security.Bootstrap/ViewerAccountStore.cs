@@ -23,7 +23,7 @@ public sealed class ViewerAccountStore(NpgsqlDataSource dataSource)
         return (bool)(await command.ExecuteScalarAsync(cancellationToken)
             ?? throw new InvalidOperationException("Viewer authorization query returned no result."));
     }
-    /// <summary>Durably reserve a unique viewer identity before any Keycloak write.</summary>
+    /// <summary>Atomically reserve a unique viewer and append the requesting actor's audit event before Keycloak I/O.</summary>
     public async Task<ViewerAccountState> ReserveAsync(
         string username, string email, string actorSubject, string actorRole,
         CancellationToken cancellationToken = default)
@@ -36,11 +36,19 @@ public sealed class ViewerAccountStore(NpgsqlDataSource dataSource)
         var id = Guid.NewGuid();
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
-            INSERT INTO oryva.viewer_accounts
-                (id, username, email, requested_by_subject, requested_by_role)
-            VALUES (@id, @username, @email, @actor, @role)
-            ON CONFLICT DO NOTHING
-            RETURNING id;
+            WITH created AS (
+                INSERT INTO oryva.viewer_accounts
+                    (id, username, email, requested_by_subject, requested_by_role)
+                VALUES (@id, @username, @email, @actor, @role)
+                ON CONFLICT DO NOTHING
+                RETURNING id
+            ), audited AS (
+                INSERT INTO oryva.viewer_provisioning_audit
+                    (provisioning_id, event_type, actor_subject, actor_role)
+                SELECT id, 'reserved', @actor, @role FROM created
+                RETURNING provisioning_id
+            )
+            SELECT provisioning_id FROM audited;
             """, connection);
         command.Parameters.AddWithValue("id", id);
         command.Parameters.AddWithValue("username", username);
