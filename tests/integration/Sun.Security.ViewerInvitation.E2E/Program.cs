@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Text;
 using Npgsql;
 using Sun.Security.Bootstrap;
 
@@ -115,6 +117,114 @@ try
 
     var viewer = await SeedAsync("role_assigned");
     var other = await SeedAsync("role_assigned");
+
+    // The queued API returns metadata only; bearer material is encrypted in
+    // the same transaction as the challenge and append-only issuance audit.
+    var encryption = new ViewerInvitationOutboxCrypto(
+        "ci-ephemeral-v1", RandomNumberGenerator.GetBytes(32));
+    var queued = await store.IssueQueuedAsync(viewer, "ci-master", "master", encryption);
+    async Task<(ViewerInvitationEncryptedToken Envelope, string Email, string State)> LoadOutboxAsync(Guid id)
+    {
+        await using var connection = await source.OpenConnectionAsync();
+        await using var command = new NpgsqlCommand("""
+            SELECT delivery.key_id, delivery.nonce, delivery.ciphertext,
+                   delivery.auth_tag, challenge.recipient_email, delivery.state
+            FROM oryva.viewer_invitation_outbox AS delivery
+            JOIN oryva.viewer_invitation_challenges AS challenge
+              ON challenge.id = delivery.challenge_id
+            WHERE delivery.challenge_id = @id;
+            """, connection);
+        command.Parameters.AddWithValue("id", id);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+            throw new Exception("Encrypted outbox record was not committed.");
+        return (new ViewerInvitationEncryptedToken(
+            reader.GetString(0), reader.GetFieldValue<byte[]>(1),
+            reader.GetFieldValue<byte[]>(2), reader.GetFieldValue<byte[]>(3)),
+            reader.GetString(4), reader.GetString(5));
+    }
+    var (firstEnvelope, recipient, initialState) = await LoadOutboxAsync(queued.Id);
+    if (initialState != "pending" || queued.ToString().Contains("Token", StringComparison.Ordinal))
+        throw new Exception("Outbox receipt was not metadata-only.");
+    var firstQueuedToken = encryption.Decrypt(queued.Id, viewer, recipient, firstEnvelope);
+    if (firstQueuedToken.Length != 43 ||
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(firstQueuedToken))) is not string digest)
+        throw new Exception("Encrypted outbox token could not be recovered.");
+    await using (var connection = await source.OpenConnectionAsync())
+    await using (var digestCommand = new NpgsqlCommand("""
+        SELECT token_digest FROM oryva.viewer_invitation_challenges WHERE id = @id;
+        """, connection))
+    {
+        digestCommand.Parameters.AddWithValue("id", queued.Id);
+        if ((string?)await digestCommand.ExecuteScalarAsync() != digest)
+            throw new Exception("Encrypted outbox token did not match challenge digest.");
+    }
+    try
+    {
+        encryption.Decrypt(queued.Id, other, recipient, firstEnvelope);
+        throw new Exception("Outbox ciphertext accepted a substituted viewer.");
+    }
+    catch (CryptographicException) { }
+    try
+    {
+        var tampered = firstEnvelope with { Tag = (byte[])firstEnvelope.Tag.Clone() };
+        tampered.Tag[0] ^= 1;
+        encryption.Decrypt(queued.Id, viewer, recipient, tampered);
+        throw new Exception("Outbox accepted a tampered authentication tag.");
+    }
+    catch (CryptographicException) { }
+    try
+    {
+        new ViewerInvitationOutboxCrypto("wrong-key", RandomNumberGenerator.GetBytes(32))
+            .Decrypt(queued.Id, viewer, recipient, firstEnvelope);
+        throw new Exception("Outbox accepted an incorrect key identifier.");
+    }
+    catch (CryptographicException) { }
+
+    var queuedAgain = await store.IssueQueuedAsync(viewer, "ci-master", "master", encryption);
+    if ((await LoadOutboxAsync(queued.Id)).State != "cancelled" ||
+        (await LoadOutboxAsync(queuedAgain.Id)).State != "pending" ||
+        await store.ConsumeAsync(viewer, firstQueuedToken))
+        throw new Exception("Reissue did not atomically revoke and cancel previous delivery.");
+    var (secondEnvelope, secondEmail, _) = await LoadOutboxAsync(queuedAgain.Id);
+    var secondQueuedToken = encryption.Decrypt(queuedAgain.Id, viewer, secondEmail, secondEnvelope);
+    if (!await store.ConsumeAsync(viewer, secondQueuedToken) ||
+        (await LoadOutboxAsync(queuedAgain.Id)).State != "cancelled")
+        throw new Exception("Consumption failed to cancel pending encrypted delivery.");
+
+    // An outbox insertion failure must roll back challenge revocation and audit.
+    var surviving = await store.IssueQueuedAsync(viewer, "ci-master", "master", encryption);
+    await using (var connection = await source.OpenConnectionAsync())
+    await using (var trigger = new NpgsqlCommand("""
+        CREATE FUNCTION oryva.ci_reject_outbox() RETURNS trigger LANGUAGE plpgsql AS
+        $fn$ BEGIN RAISE EXCEPTION 'CI simulated outbox failure'; END $fn$;
+        CREATE TRIGGER ci_reject_outbox BEFORE INSERT ON oryva.viewer_invitation_outbox
+        FOR EACH ROW EXECUTE FUNCTION oryva.ci_reject_outbox();
+        """, connection))
+        await trigger.ExecuteNonQueryAsync();
+    try
+    {
+        try
+        {
+            await store.IssueQueuedAsync(viewer, "ci-master", "master", encryption);
+            throw new Exception("Outbox failure unexpectedly allowed issuance.");
+        }
+        catch (PostgresException ex) when (ex.MessageText == "CI simulated outbox failure") { }
+    }
+    finally
+    {
+        await using var connection = await source.OpenConnectionAsync();
+        await using var drop = new NpgsqlCommand("""
+            DROP TRIGGER ci_reject_outbox ON oryva.viewer_invitation_outbox;
+            DROP FUNCTION oryva.ci_reject_outbox();
+            """, connection);
+        await drop.ExecuteNonQueryAsync();
+    }
+    if ((await LoadOutboxAsync(surviving.Id)).State != "pending" ||
+        await CountAuditAsync(surviving.Id, "revoked") != 0)
+        throw new Exception("Outbox insertion failure left a revoked challenge.");
+    Console.WriteLine("PASS encrypted atomic outbox, AEAD tamper and identity binding, reissue and rollback");
+
     await ExpectDeniedAsync(() => store.IssueAsync(viewer, "ci-viewer", "viewer"));
     await ExpectDeniedAsync(() => store.IssueAsync(viewer, "", "admin"));
     await ExpectDeniedAsync(() => store.IssueAsync(viewer, "ci-intruder", "master"));
@@ -314,6 +424,16 @@ try
 finally
 {
     await using var connection = await source.OpenConnectionAsync();
+    await using (var deleteOutbox = new NpgsqlCommand("""
+        DELETE FROM oryva.viewer_invitation_outbox
+        WHERE challenge_id IN (
+            SELECT id FROM oryva.viewer_invitation_challenges
+            WHERE viewer_id = ANY(@ids));
+        """, connection))
+    {
+        deleteOutbox.Parameters.AddWithValue("ids", seeded.ToArray());
+        await deleteOutbox.ExecuteNonQueryAsync();
+    }
     await using (var deleteChallenges = new NpgsqlCommand("""
         DELETE FROM oryva.viewer_invitation_challenges WHERE viewer_id = ANY(@ids);
         """, connection))
