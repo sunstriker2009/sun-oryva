@@ -187,6 +187,35 @@ try
         """, viewer);
     Console.WriteLine("PASS email snapshot binding enforced");
 
+    // An email address alone is not an identity: a re-bound Keycloak subject
+    // must never be allowed to redeem an earlier owner's invitation.
+    var subjectBound = await store.IssueAsync(viewer, "ci-master", "master");
+    await ExecuteAsync("""
+        UPDATE oryva.viewer_accounts
+        SET keycloak_subject_id = 'ci-rebound-subject'
+        WHERE id = @id;
+        """, viewer);
+    if (await store.ConsumeAsync(viewer, subjectBound.Token))
+        throw new Exception("Invitation accepted after Keycloak subject rebinding.");
+    await ExecuteAsync("""
+        UPDATE oryva.viewer_accounts
+        SET keycloak_subject_id = 'ci-subject-' || replace(id::text, '-', '')
+        WHERE id = @id;
+        """, viewer);
+    if (!await store.ConsumeAsync(viewer, subjectBound.Token))
+        throw new Exception("Original subject could not redeem unchanged invitation.");
+    await using (var connection = await source.OpenConnectionAsync())
+    await using (var snapshot = new NpgsqlCommand("""
+        SELECT keycloak_subject_snapshot FROM oryva.viewer_invitation_challenges
+        WHERE id = @id;
+        """, connection))
+    {
+        snapshot.Parameters.AddWithValue("id", subjectBound.Id);
+        if ((string?)await snapshot.ExecuteScalarAsync() != "ci-subject-" + viewer.ToString("N"))
+            throw new Exception("Invitation did not retain the original subject snapshot.");
+    }
+    Console.WriteLine("PASS Keycloak subject rebinding fails closed; original subject remains bound");
+
     var disabled = await store.IssueAsync(viewer, "ci-admin", "admin");
     await ExecuteAsync("""
         UPDATE oryva.viewer_accounts SET state = 'deactivation_pending'

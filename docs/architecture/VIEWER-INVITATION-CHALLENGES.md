@@ -13,6 +13,18 @@ The internal `ViewerInvitationChallengeStore` supports a deliberately narrow fir
 3. A future independently reviewed, authenticated delivery and browser ceremony may present the token. `ConsumeAsync` records possession **once** with an atomic PostgreSQL update only while the viewer is still `role_assigned`, subject-bound, email-unchanged, unrevoked and unexpired.
 4. Consumption **does not** mark Keycloak email verified, set a credential, change any ORYVA account state, assign a role or enable login. It is not an enrollment completion signal.
 
+Migration 016 also snapshots the exact bound Keycloak subject at issuance. Redemption
+takes a shared lock on the viewer row and requires the subject to match this
+snapshot, preventing an invitation issued for one identity from being redeemed
+after subject rebinding. This serializes redemption with database-first viewer
+deactivation. Outstanding legacy challenges have no provable subject snapshot, so migration
+016 **refuses to run** until they are explicitly revoked with attributable
+audit. Only terminal challenges are backfilled when the viewer still has a
+subject; migration also fails closed if an orphaned/unbound challenge cannot
+be backfilled. This preflight is a deliberate operational release gate, not
+automatic production cleanup. PostgreSQL E2E covers subject substitution and restoration; it does
+**not** establish verified email ownership or a safe credential ceremony.
+
 The recipient snapshot intentionally detects email changes after issuance. A digest-only database leak does not directly reveal the 256-bit token. `ViewerInvitationIssue.ToString()` redacts the token. The token must never appear in logs, URLs captured by telemetry, analytics, referrers or admin responses.
 
 ## Threat model and mandatory next gates

@@ -65,17 +65,23 @@ public sealed class ViewerInvitationChallengeStore(NpgsqlDataSource dataSource)
 
         // This row lock serializes concurrent issuers for the same viewer.
         string email;
+        string keycloakSubject;
         await using (var locked = new NpgsqlCommand("""
-            SELECT email FROM oryva.viewer_accounts
+            SELECT email, keycloak_subject_id FROM oryva.viewer_accounts
             WHERE id = @id AND state = 'role_assigned'
               AND keycloak_subject_id IS NOT NULL
             FOR UPDATE;
             """, connection, transaction))
         {
             locked.Parameters.AddWithValue("id", viewerId);
-            email = (string?)await locked.ExecuteScalarAsync(cancellationToken)
-                ?? throw new InvalidOperationException(
+            await using var reader = await locked.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+                throw new InvalidOperationException(
                     "Only a subject-bound, role-assigned inactive viewer can receive a challenge.");
+            email = reader.GetString(0);
+            keycloakSubject = reader.GetString(1);
+            if (string.IsNullOrWhiteSpace(keycloakSubject))
+                throw new InvalidOperationException("Viewer Keycloak subject is missing.");
         }
 
         // Revocation and its actor-attributed event share the issuance transaction.
@@ -102,9 +108,10 @@ public sealed class ViewerInvitationChallengeStore(NpgsqlDataSource dataSource)
         await using (var insert = new NpgsqlCommand("""
             INSERT INTO oryva.viewer_invitation_challenges
                 (id, viewer_id, token_digest, recipient_email,
-                 issued_by_subject, issued_by_role, created_at, expires_at)
+                 keycloak_subject_snapshot, issued_by_subject, issued_by_role,
+                 created_at, expires_at)
             VALUES (@challenge, @viewer, @digest, @email,
-                    @actor, @role, now(), now() + interval '15 minutes')
+                    @subject, @actor, @role, now(), now() + interval '15 minutes')
             RETURNING expires_at;
             """, connection, transaction))
         {
@@ -112,6 +119,7 @@ public sealed class ViewerInvitationChallengeStore(NpgsqlDataSource dataSource)
             insert.Parameters.AddWithValue("viewer", viewerId);
             insert.Parameters.AddWithValue("digest", digest);
             insert.Parameters.AddWithValue("email", email);
+            insert.Parameters.AddWithValue("subject", keycloakSubject);
             insert.Parameters.AddWithValue("actor", actorSubject);
             insert.Parameters.AddWithValue("role", actorRole);
             expiresAt = (DateTime)(await insert.ExecuteScalarAsync(cancellationToken)
@@ -153,6 +161,21 @@ public sealed class ViewerInvitationChallengeStore(NpgsqlDataSource dataSource)
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction =
             (NpgsqlTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        // Serialize redemption with viewer deactivation or subject rebinding.
+        // Without this lock a concurrent state transition could commit while
+        // the UPDATE below reads an older viewer snapshot.
+        await using (var viewerLock = new NpgsqlCommand("""
+            SELECT 1 FROM oryva.viewer_accounts
+            WHERE id = @viewer AND state = 'role_assigned'
+              AND keycloak_subject_id IS NOT NULL
+            FOR SHARE;
+            """, connection, transaction))
+        {
+            viewerLock.Parameters.AddWithValue("viewer", viewerId);
+            if (await viewerLock.ExecuteScalarAsync(cancellationToken) is null)
+                return false;
+        }
+
         Guid? consumedId;
         await using (var command = new NpgsqlCommand("""
             UPDATE oryva.viewer_invitation_challenges AS challenge
@@ -165,7 +188,7 @@ public sealed class ViewerInvitationChallengeStore(NpgsqlDataSource dataSource)
               AND challenge.revoked_at IS NULL
               AND challenge.expires_at > clock_timestamp()
               AND viewer.state = 'role_assigned'
-              AND viewer.keycloak_subject_id IS NOT NULL
+              AND viewer.keycloak_subject_id = challenge.keycloak_subject_snapshot
               AND lower(viewer.email) = lower(challenge.recipient_email)
             RETURNING challenge.id;
             """, connection, transaction))
