@@ -122,8 +122,7 @@ public sealed class ViewerInvitationSmtpHandoff(
                 // Deliberately omit transport exception/inner exception: third-party
                 // SMTP clients may include message content or recipient in errors.
                 // The transaction rolls back; the lease can be retried/reclaimed.
-                throw new InvalidOperationException(
-                    "Invitation SMTP handoff failed; acceptance may be ambiguous.");
+                throw new ViewerInvitationTransportException();
             }
         }
 
@@ -193,5 +192,18 @@ public sealed class LoopbackMailpitInvitationTransport
             EnableSsl = false // Safe ONLY because host is validated loopback.
         };
         await client.SendMailAsync(message, cancellationToken);
+    }
+}
+
+/// <summary>
+/// Intentionally redacted transport error. Never attach the original exception
+/// as InnerException: SMTP libraries may embed recipient or bearer material.
+/// The caller may schedule a fenced retry, but cannot infer non-delivery.
+/// </summary>
+public sealed class ViewerInvitationTransportException : InvalidOperationException
+{
+    public ViewerInvitationTransportException()
+        : base("Invitation SMTP handoff failed; acceptance may be ambiguous.")
+    {
     }
 }
