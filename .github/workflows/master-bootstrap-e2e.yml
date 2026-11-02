@@ -62,6 +62,8 @@ jobs:
           else:
               raise SystemExit("Keycloak did not become ready")
           PY
+      - name: Validate effective Keycloak ownership profile and disabled marker persistence
+        run: python tests/integration/keycloak_user_profile_e2e.py
       - name: Configure restricted test service account
         run: python tests/integration/setup_keycloak_e2e.py
       - name: Initialize admin provisioning schema before authorization E2E
