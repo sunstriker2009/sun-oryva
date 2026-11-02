@@ -25,7 +25,7 @@ public static class OryvaBrowserCsrfBootstrap
         return async context =>
         {
             context.Response.Headers.CacheControl = "no-store";
-            context.Response.Headers.Pragma = "no-cache";
+            context.Response.Headers["Pragma"] = "no-cache";
             context.Response.Headers["Referrer-Policy"] = "no-referrer";
             context.Response.Headers["X-Content-Type-Options"] = "nosniff";
             context.Response.Headers["Cross-Origin-Resource-Policy"] = "same-origin";
