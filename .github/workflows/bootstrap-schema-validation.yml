@@ -593,6 +593,37 @@ jobs:
             END;
           END $browser_exchange_quota$;
           SQL
+      - name: Validate browser admission quota schema and idempotence
+        run: |
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/022_browser_admission_quotas.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/022_browser_admission_quotas.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO oryva.browser_admission_quotas
+            (scope, partition_key, window_start, request_count)
+          VALUES ('global', 'global', now(), 1001);
+          DO $browser_admission_schema$
+          BEGIN
+            BEGIN
+              INSERT INTO oryva.browser_admission_quotas
+                (scope, partition_key, window_start, request_count)
+              VALUES ('ip', '203.0.113.5', now(), 1);
+              RAISE EXCEPTION 'raw IP accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            BEGIN
+              UPDATE oryva.browser_admission_quotas SET request_count = 1002;
+              RAISE EXCEPTION 'over-limit admission count accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            BEGIN
+              INSERT INTO oryva.browser_admission_quotas
+                (scope, partition_key, window_start, request_count)
+              VALUES ('global', 'other', now(), 1);
+              RAISE EXCEPTION 'multiple global partitions accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+          END $browser_admission_schema$;
+          SQL
       - name: Verify singleton and state constraints
         run: |
           psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
