@@ -259,6 +259,76 @@ jobs:
             END;
           END $quota_guard$;
           SQL
+      - name: Validate one-time invitation challenge schema and constraints
+        run: |
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/014_viewer_invitation_challenges.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/014_viewer_invitation_challenges.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO oryva.viewer_invitation_challenges
+              (id, viewer_id, token_digest, recipient_email, issued_by_subject,
+               issued_by_role, expires_at)
+          VALUES ('10000000-0000-0000-0000-000000000001',
+                  '00000000-0000-0000-0000-000000000003',
+                  repeat('A', 64), 'audit@example.invalid', 'ci-master',
+                  'master', now() + interval '15 minutes');
+          DO $invitation_schema$
+          BEGIN
+            BEGIN
+              INSERT INTO oryva.viewer_invitation_challenges
+                  (id, viewer_id, token_digest, recipient_email,
+                   issued_by_subject, issued_by_role, expires_at)
+              VALUES ('10000000-0000-0000-0000-000000000002',
+                      '00000000-0000-0000-0000-000000000003',
+                      repeat('B', 64), 'audit@example.invalid',
+                      'ci-admin', 'admin', now() + interval '15 minutes');
+              RAISE EXCEPTION 'multiple outstanding challenges accepted';
+            EXCEPTION WHEN unique_violation THEN NULL;
+            END;
+            BEGIN
+              INSERT INTO oryva.viewer_invitation_challenges
+                  (id, viewer_id, token_digest, recipient_email,
+                   issued_by_subject, issued_by_role, expires_at)
+              VALUES ('10000000-0000-0000-0000-000000000003',
+                      '00000000-0000-0000-0000-000000000003',
+                      'plaintext-token', 'audit@example.invalid',
+                      'ci-admin', 'admin', now() + interval '15 minutes');
+              RAISE EXCEPTION 'plaintext or malformed digest accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            BEGIN
+              INSERT INTO oryva.viewer_invitation_challenges
+                  (id, viewer_id, token_digest, recipient_email,
+                   issued_by_subject, issued_by_role, expires_at)
+              VALUES ('10000000-0000-0000-0000-000000000004',
+                      '00000000-0000-0000-0000-000000000003',
+                      repeat('C', 64), 'audit@example.invalid',
+                      'ci-viewer', 'viewer', now() + interval '15 minutes');
+              RAISE EXCEPTION 'viewer issuer accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            BEGIN
+              INSERT INTO oryva.viewer_invitation_challenges
+                  (id, viewer_id, token_digest, recipient_email,
+                   issued_by_subject, issued_by_role, expires_at)
+              VALUES ('10000000-0000-0000-0000-000000000005',
+                      '00000000-0000-0000-0000-000000000003',
+                      repeat('D', 64), 'audit@example.invalid',
+                      'ci-admin', 'admin', now() + interval '16 minutes');
+              RAISE EXCEPTION 'overlong challenge expiry accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+          END $invitation_schema$;
+          UPDATE oryva.viewer_invitation_challenges
+             SET revoked_at = now()
+           WHERE id = '10000000-0000-0000-0000-000000000001';
+          INSERT INTO oryva.viewer_invitation_challenges
+              (id, viewer_id, token_digest, recipient_email,
+               issued_by_subject, issued_by_role, expires_at)
+          VALUES ('10000000-0000-0000-0000-000000000006',
+                  '00000000-0000-0000-0000-000000000003',
+                  repeat('E', 64), 'audit@example.invalid',
+                  'ci-admin', 'admin', now() + interval '15 minutes');
+          SQL
       - name: Verify singleton and state constraints
         run: |
           psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
