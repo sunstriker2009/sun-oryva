@@ -39,9 +39,27 @@ jobs:
       - name: Initialize PostgreSQL schema
         run: |
           PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/001_master_bootstrap.sql
+      - name: Start isolated SMTP sink
+        run: |
+          docker network create oryva-e2e-net
+          docker run -d --name oryva-e2e-mailpit --network oryva-e2e-net \
+            -p 127.0.0.1:8025:8025 axllent/mailpit:v1.27.2
+          python - <<'PY'
+          import time, urllib.request
+          for _ in range(30):
+              try:
+                  with urllib.request.urlopen("http://127.0.0.1:8025/api/v1/messages", timeout=3) as r:
+                      if r.status == 200:
+                          break
+              except OSError:
+                  pass
+              time.sleep(1)
+          else:
+              raise SystemExit("Isolated SMTP sink did not become ready")
+          PY
       - name: Start Keycloak
         run: |
-          docker run -d --name oryva-e2e-keycloak -p 8080:8080 \
+          docker run -d --name oryva-e2e-keycloak --network oryva-e2e-net -p 8080:8080 \
             -e KC_BOOTSTRAP_ADMIN_USERNAME=ci-admin \
             -e KC_BOOTSTRAP_ADMIN_PASSWORD=ci-only-not-production \
             -v "$PWD/infrastructure/keycloak/oryva-realm.json:/opt/keycloak/data/import/oryva-realm.json:ro" \
@@ -66,6 +84,8 @@ jobs:
         run: python tests/integration/keycloak_user_profile_e2e.py
       - name: Verify disabled-account enrollment remains fail-closed
         run: python tests/integration/keycloak_disabled_enrollment_e2e.py
+      - name: Probe disabled-account action links using isolated SMTP sink
+        run: python tests/integration/keycloak_disabled_action_link_e2e.py
       - name: Configure restricted test service account
         run: python tests/integration/setup_keycloak_e2e.py
       - name: Initialize admin provisioning schema before authorization E2E
@@ -112,4 +132,6 @@ jobs:
         run: dotnet run --project tests/integration/Sun.Security.AdminProvisioning.E2E/Sun.Security.AdminProvisioning.E2E.csproj -c Release
       - name: Keycloak logs on failure
         if: failure()
-        run: docker logs oryva-e2e-keycloak --tail 120
+        run: |
+          docker logs oryva-e2e-keycloak --tail 120
+          docker logs oryva-e2e-mailpit --tail 60
