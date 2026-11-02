@@ -166,6 +166,27 @@ jobs:
               RAISE EXCEPTION 'unknown viewer audit event accepted';
             EXCEPTION WHEN check_violation THEN NULL;
             END;
+            BEGIN
+              EXECUTE $rollback_sql$
+                WITH created AS (
+                  INSERT INTO oryva.viewer_accounts
+                    (id, username, email, requested_by_subject, requested_by_role)
+                  VALUES ('00000000-0000-0000-0000-000000000004',
+                          'viewer-audit-rollback', 'rollback@example.invalid',
+                          'test-master', 'master')
+                  RETURNING id
+                )
+                INSERT INTO oryva.viewer_provisioning_audit
+                  (provisioning_id, event_type, actor_subject, actor_role)
+                SELECT id, 'reserved', 'test-master', 'viewer' FROM created
+              $rollback_sql$;
+              RAISE EXCEPTION 'invalid audit actor role was accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            IF EXISTS (SELECT 1 FROM oryva.viewer_accounts
+                       WHERE username = 'viewer-audit-rollback') THEN
+              RAISE EXCEPTION 'viewer reservation survived failed audit insert';
+            END IF;
           END $viewer_reservation_audit$;
           SQL
       - name: Verify singleton and state constraints
