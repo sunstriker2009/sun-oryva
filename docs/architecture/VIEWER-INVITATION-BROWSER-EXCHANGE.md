@@ -30,6 +30,10 @@ On a permitted same-origin GET, the handler generates a fresh 256-bit CSPRNG tok
 
 This is a standalone double-submit CSRF bootstrap, **not session-bound authentication**. Before any public endpoint, implement independently protected HttpOnly browser-session cookies, distributed source-IP/global admission controls, reviewed reverse-proxy configuration, session binding/rotation and revocation, independent Keycloak email verification, one-time credential completion and E2E security tests. Never treat possession of the CSRF token as email ownership, invitation authorization or permission to enable an account. The test-only GET route is not registered in the production API. All five final-head PR checks passed on `dac6e657` on 2026-11-02, including the isolated ASP.NET TestServer policy suite and real PostgreSQL/Keycloak full-stack E2E. This validates the unregistered helper only; post-merge main checks are tracked separately.
 
+## Opt-in distributed browser admission (PR #106 verified)
+
+Migration 022 adds PostgreSQL-backed global and source-IP fixed-minute admission counters, with HMAC-keyed IP partitions, IPv6 /64 aggregation and fail-closed HTTP 429/503 for explicitly marked routes. The source address is taken only from `Connection.RemoteIpAddress`; raw forwarding headers are never trusted. Isolated PostgreSQL/TestServer E2E validates concurrent limits and spoof resistance. **The middleware is unregistered, and production proxy trust, sessions, Keycloak email verification, credential enrollment and activation are not delivered.** See [browser admission threat boundaries](BROWSER-ADMISSION-QUOTAS.md).
+
 ## Threat boundaries and unfinished work
 
 - **Proof scope:** possession of an invitation code is not independent confirmation that Keycloak's email is verified. Neither exchange nor inspection sets `emailVerified`, writes a credential, enables an account, grants roles, or creates a Keycloak session.
