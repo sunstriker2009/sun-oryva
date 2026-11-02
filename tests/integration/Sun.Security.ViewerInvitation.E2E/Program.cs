@@ -322,6 +322,136 @@ try
         throw new Exception("Exhausted delivery was not cancelled.");
     Console.WriteLine("PASS fenced outbox claim concurrency, retry, reissue, expiry, identity and exhaustion");
 
+    // Transaction-held SMTP acceptance handoff is only wired to a loopback
+    // Mailpit sink. No real email, public endpoint, or Keycloak activation.
+    using var mailpitApi = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+    async Task<int> MailpitTotalAsync()
+    {
+        var json = await mailpitApi.GetStringAsync("http://127.0.0.1:8025/api/v1/messages");
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.GetProperty("total").GetInt32();
+    }
+    var mailViewer = await SeedAsync("role_assigned");
+    var mailQueued = await store.IssueQueuedAsync(mailViewer, "ci-master", "master", encryption);
+    var mailLease = await leasing.ClaimNextAsync()
+        ?? throw new Exception("Eligible Mailpit delivery was not leased.");
+    if (mailLease.ChallengeId != mailQueued.Id)
+        throw new Exception("Mailpit test leased an unexpected challenge.");
+    var mailHandoff = new ViewerInvitationSmtpHandoff(
+        source, encryption, new LoopbackMailpitInvitationTransport());
+    var beforeMail = await MailpitTotalAsync();
+    if (await mailHandoff.TrySendAsync(mailLease with { LeaseId = Guid.NewGuid() }) ||
+        await MailpitTotalAsync() != beforeMail)
+        throw new Exception("Wrong lease allowed an SMTP message.");
+    if (!await mailHandoff.TrySendAsync(mailLease))
+        throw new Exception("Valid transaction-held Mailpit SMTP handoff was denied.");
+    if (await MailpitTotalAsync() != beforeMail + 1 ||
+        (await LoadOutboxAsync(mailQueued.Id)).State != "sent" ||
+        await mailHandoff.TrySendAsync(mailLease) ||
+        await leasing.ClaimNextAsync() is not null)
+        throw new Exception("SMTP acceptance was not recorded exactly once.");
+    await using (var connection = await source.OpenConnectionAsync())
+    await using (var command = new NpgsqlCommand("""
+        SELECT count(*) FROM oryva.viewer_invitation_delivery_audit
+        WHERE challenge_id = @id AND event_type = 'smtp_accepted';
+        """, connection))
+    {
+        command.Parameters.AddWithValue("id", mailQueued.Id);
+        if (Convert.ToInt32(await command.ExecuteScalarAsync()) != 1)
+            throw new Exception("SMTP acceptance audit was missing or duplicated.");
+    }
+    // Reissue revokes the sent invitation without changing immutable
+    // acceptance evidence. A delivered email is never proof of activation.
+    var afterSent = await store.IssueQueuedAsync(mailViewer, "ci-master", "master", encryption);
+    if ((await LoadOutboxAsync(mailQueued.Id)).State != "sent" ||
+        (await LoadOutboxAsync(afterSent.Id)).State != "pending")
+        throw new Exception("Reissue changed historical SMTP acceptance state.");
+    var (afterEnvelope, afterEmail, _) = await LoadOutboxAsync(afterSent.Id);
+    if (!await store.ConsumeAsync(mailViewer,
+        encryption.Decrypt(afterSent.Id, mailViewer, afterEmail, afterEnvelope)))
+        throw new Exception("Could not close reissued SMTP test fixture.");
+
+    // A transport error must not leak a bearer via the exception. It leaves
+    // the lease retryable and does not falsely record SMTP acceptance.
+    var failedViewer = await SeedAsync("role_assigned");
+    var failedQueued = await store.IssueQueuedAsync(failedViewer, "ci-master", "master", encryption);
+    var failedLease = await leasing.ClaimNextAsync()
+        ?? throw new Exception("Failed SMTP fixture was not leased.");
+    var (failedEnvelope, failedEmail, _) = await LoadOutboxAsync(failedQueued.Id);
+    var failedCode = encryption.Decrypt(failedQueued.Id, failedViewer, failedEmail, failedEnvelope);
+    var failingHandoff = new ViewerInvitationSmtpHandoff(
+        source, encryption, new CiFailingInvitationTransport());
+    try
+    {
+        await failingHandoff.TrySendAsync(failedLease);
+        throw new Exception("Simulated ambiguous SMTP failure was accepted.");
+    }
+    catch (InvalidOperationException ex)
+    {
+        if (ex.Message.Contains(failedCode, StringComparison.Ordinal) ||
+            !ex.Message.Contains("ambiguous", StringComparison.Ordinal))
+            throw new Exception("SMTP exception was not safely redacted.");
+    }
+    if ((await LoadOutboxAsync(failedQueued.Id)).State != "leased" ||
+        !await leasing.ReleaseForRetryAsync(failedLease) ||
+        (await LoadOutboxAsync(failedQueued.Id)).State != "pending")
+        throw new Exception("Failed SMTP transaction did not retain retryable state.");
+    if (!await store.ConsumeAsync(failedViewer, failedCode))
+        throw new Exception("Could not close failed SMTP test fixture.");
+    // Post-claim changes must be independently revalidated at SMTP handoff,
+    // not merely when a worker originally acquired its lease.
+    var noMailBaseline = await MailpitTotalAsync();
+    var disabledAtHandoff = await SeedAsync("role_assigned");
+    var disabledQueued = await store.IssueQueuedAsync(
+        disabledAtHandoff, "ci-master", "master", encryption);
+    var disabledLease = await leasing.ClaimNextAsync()
+        ?? throw new Exception("Disabled-at-handoff fixture was not leased.");
+    await ExecuteAsync("""
+        UPDATE oryva.viewer_accounts SET state = 'deactivation_pending'
+        WHERE id = @id;
+        """, disabledAtHandoff);
+    if (await mailHandoff.TrySendAsync(disabledLease) ||
+        await leasing.SweepInvalidAsync() < 1)
+        throw new Exception("Deactivated viewer was permitted to receive SMTP.");
+    var reboundAtHandoff = await SeedAsync("role_assigned");
+    var reboundQueued = await store.IssueQueuedAsync(
+        reboundAtHandoff, "ci-master", "master", encryption);
+    var reboundLease = await leasing.ClaimNextAsync()
+        ?? throw new Exception("Subject-rebound handoff fixture was not leased.");
+    await ExecuteAsync("""
+        UPDATE oryva.viewer_accounts SET keycloak_subject_id = 'substituted'
+        WHERE id = @id;
+        """, reboundAtHandoff);
+    if (await mailHandoff.TrySendAsync(reboundLease) ||
+        await leasing.SweepInvalidAsync() < 1)
+        throw new Exception("Rebound viewer was permitted to receive SMTP.");
+    var expiredAtHandoff = await SeedAsync("role_assigned");
+    var expiredQueued = await store.IssueQueuedAsync(
+        expiredAtHandoff, "ci-master", "master", encryption);
+    var expiredLease = await leasing.ClaimNextAsync()
+        ?? throw new Exception("Expired handoff fixture was not leased.");
+    await ExecuteAsync("""
+        UPDATE oryva.viewer_invitation_outbox
+        SET lease_expires_at = clock_timestamp() - interval '1 second'
+        WHERE challenge_id = @id;
+        """, expiredQueued.Id);
+    if (await mailHandoff.TrySendAsync(expiredLease))
+        throw new Exception("Expired lease was permitted to send SMTP.");
+    var (expiredEnvelope, expiredEmail, _) = await LoadOutboxAsync(expiredQueued.Id);
+    if (!await store.ConsumeAsync(expiredAtHandoff,
+        encryption.Decrypt(expiredQueued.Id, expiredAtHandoff, expiredEmail, expiredEnvelope)))
+        throw new Exception("Could not close expired handoff fixture.");
+    try
+    {
+        _ = new LoopbackMailpitInvitationTransport("smtp.example.com");
+        throw new Exception("External SMTP destination was accepted.");
+    }
+    catch (ArgumentException) { }
+    if (await MailpitTotalAsync() != noMailBaseline)
+        throw new Exception("Invalid handoff sent an unexpected SMTP message.");
+    Console.WriteLine("PASS isolated Mailpit SMTP acceptance, lease fencing, audit and ambiguous retry");
+
+
 
     await ExpectDeniedAsync(() => store.IssueAsync(viewer, "ci-viewer", "viewer"));
     await ExpectDeniedAsync(() => store.IssueAsync(viewer, "", "admin"));
@@ -562,4 +692,12 @@ finally
             """, connection);
         await deleteMaster.ExecuteNonQueryAsync();
     }
+}
+
+// Test-only transport: intentionally includes the secret in its original error
+// to verify the handoff never exposes third-party SMTP exception text.
+sealed class CiFailingInvitationTransport : IViewerInvitationMailTransport
+{
+    public Task SendAsync(string recipientEmail, string bearerCode, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("SMTP ambiguous failure: " + bearerCode);
 }

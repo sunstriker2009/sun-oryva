@@ -122,3 +122,30 @@ as at-least-once delivery. A 60-second lease alone does not serialize a
 remote SMTP send with revocation; it is NOT permission to send mail.
 Browser URL/session design, verified email ownership, credential enrollment,
 Keycloak activation and production least-privilege grants remain blocked.
+
+## Transaction-held isolated SMTP handoff (migration 019)
+
+The internal `ViewerInvitationSmtpHandoff` now rechecks the exact lease, 15-second
+minimum lease/challenge lifetime, unchanged recipient and Keycloak subject,
+viewer role-assigned state, revocation and consumption while holding a shared
+viewer lock plus challenge/outbox write locks **through SMTP acceptance**. A
+10-second bounded transport attempt prevents unbounded normal network waits.
+Only after the relay accepts SMTP DATA does the transaction mark the outbox
+`sent` and append a separate immutable `smtp_accepted` audit event. The
+receipt means relay acceptance, **not recipient inbox delivery, email proof,
+or account activation**. Stale leases cannot send; a concurrent reissue or
+deactivation waits for the in-flight handoff transaction and subsequently
+revokes or disables the invitation.
+
+The only supplied SMTP adapter is `LoopbackMailpitInvitationTransport`, which
+rejects non-loopback destinations and is exercised against a local CI Mailpit
+container. **No production SMTP transport or automatic dispatcher is enabled.**
+SMTP acceptance and PostgreSQL commit are not atomic: if SMTP accepts a message
+but the transaction fails, retries can deliver duplicate emails. A single-use,
+expiring challenge remains the authoritative replay defense. Errors from
+untrusted transports are redacted, and no bearer appears in database audit.
+Migration 019 is idempotence-checked in schema CI; PostgreSQL/Mailpit E2E
+covers wrong-lease rejection, single acceptance, immutable audit, reissue,
+redacted ambiguous failure and retry. Production TLS/SMTP credentials, safe
+link/session design, browser email proof, Keycloak credential enrollment,
+rate limits and release review remain blocked.
