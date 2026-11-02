@@ -97,6 +97,11 @@ try:
                          "PUT", {"type": "password", "value": password,
                                  "temporary": False}, token=admin_token)
         assert status == 204
+        # Resetting a password may clear UPDATE_PASSWORD. Re-apply the desired
+        # required actions after the credential is installed.
+        status, _ = call("/admin/realms/oryva/users/" + user_id, "PUT",
+                         {"requiredActions": actions}, token=admin_token)
+        assert status == 204
 
         status, result = call("/realms/oryva/protocol/openid-connect/token",
                               "POST", {"grant_type": "password", "client_id": client_name,
