@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Npgsql;
 using Sun.Security.Bootstrap;
 
@@ -125,6 +126,23 @@ try
     var first = await store.IssueAsync(viewer, "ci-master", "master");
     if (first.Token.Length != 43 || first.ToString().Contains(first.Token))
         throw new Exception("Challenge token generation or log redaction failed.");
+    // A controller accidentally returning this object must never serialize
+    // its bearer secret, including when boxed or nested in a response DTO.
+    foreach (var serialized in new[]
+    {
+        JsonSerializer.Serialize(first),
+        JsonSerializer.Serialize((object)first),
+        JsonSerializer.Serialize(first, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+        JsonSerializer.Serialize(new { Invitation = first })
+    })
+    {
+        if (serialized.Contains(first.Token, StringComparison.Ordinal) ||
+            serialized.Contains("\"token\"", StringComparison.OrdinalIgnoreCase) ||
+            !serialized.Contains(first.Id.ToString(), StringComparison.OrdinalIgnoreCase))
+            throw new Exception("Invitation bearer secret was exposed in a JSON response.");
+    }
+    Console.WriteLine("PASS invitation bearer token excluded from JSON and log representations");
+
     var second = await store.IssueAsync(viewer, "ci-admin", "admin");
     if (await CountAuditAsync(first.Id, "issued") != 1 ||
         await CountAuditAsync(first.Id, "revoked") != 1 ||
