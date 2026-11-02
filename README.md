@@ -4,7 +4,7 @@
 
 ORYVA is an independently deployable identity and security platform with reusable ASP.NET Core and React/Next.js integration packages. MarketPilot AI is its first planned consumer, not a dependency.
 
-**Status (2026-10-31):** M1 secure sole-master bootstrap implemented and integration-tested. M2 backend Keycloak JWT bearer authentication, active-master authorization policy, protected API endpoint, and real-token HTTP E2E tests merged. Full browser login/logout, user administration, React UI, and consumer integration remain pending.
+**Status (2026-11-01):** Backend v1 is **in progress**, not production-ready. Sole-master bootstrap, signed Keycloak JWT authorization, database-backed active admin/viewer access, guarded admin/viewer provisioning, activation and database-first revocation are implemented and integration-tested. Viewer reservation and preparation audit events are atomic. **Secure invitations, user-controlled credential enrollment, password change/recovery, complete lifecycle auditing, distributed throttling, least-privilege production Keycloak configuration, release gates and deployment hardening remain outstanding.** Browser OIDC integration, React UI and consumer integration are separate unfinished workstreams.
 
 ## Implemented foundations
 - Keycloak realm, PostgreSQL master reservation, and distributed provisioning lock.
