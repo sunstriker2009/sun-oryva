@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS oryva.viewer_invitation_audit (
     CONSTRAINT viewer_invitation_audit_actor_check CHECK (
         (event_type IN ('issued', 'revoked')
          AND length(trim(coalesce(actor_subject, ''))) > 0
-         AND actor_role IN ('master', 'admin'))
+         AND coalesce(actor_role, '') IN ('master', 'admin'))
         OR
         (event_type = 'consumed' AND actor_subject IS NULL AND actor_role IS NULL)
     ),
