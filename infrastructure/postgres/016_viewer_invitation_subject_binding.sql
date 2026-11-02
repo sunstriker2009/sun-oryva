@@ -4,7 +4,22 @@
 ALTER TABLE oryva.viewer_invitation_challenges
     ADD COLUMN IF NOT EXISTS keycloak_subject_snapshot text;
 
--- Backfill existing internal challenges only when their viewer is still bound.
+-- Never silently rebind a previously issued, still-live bearer challenge to
+-- the current subject: the original identity cannot be reconstructed.
+-- Operators must explicitly revoke/reconcile such challenges, with an
+-- attributable audit event, before running this migration.
+DO $legacy_guard$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM oryva.viewer_invitation_challenges
+        WHERE keycloak_subject_snapshot IS NULL
+          AND consumed_at IS NULL AND revoked_at IS NULL
+    ) THEN
+        RAISE EXCEPTION 'unresolved legacy invitation challenges must be revoked and audited before subject binding migration';
+    END IF;
+END $legacy_guard$;
+
+-- Backfill existing terminal challenges only when their viewer is still bound.
 -- An unbound legacy challenge causes NOT NULL to fail rather than migrating
 -- it into an apparently valid invitation for a different identity.
 UPDATE oryva.viewer_invitation_challenges AS challenge
