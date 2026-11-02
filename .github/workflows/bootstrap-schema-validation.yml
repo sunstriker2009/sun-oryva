@@ -562,6 +562,37 @@ jobs:
             END IF;
           END $browser_exchange_revoked$;
           SQL
+      - name: Validate browser exchange quota schema, bounds and idempotence
+        run: |
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/021_viewer_invitation_exchange_quotas.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/021_viewer_invitation_exchange_quotas.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO oryva.viewer_invitation_exchange_quotas
+            (viewer_id, window_started_at, attempt_count)
+          VALUES ('00000000-0000-0000-0000-000000000003', now(), 33);
+          DO $browser_exchange_quota$
+          BEGIN
+            BEGIN
+              UPDATE oryva.viewer_invitation_exchange_quotas
+              SET attempt_count = 34;
+              RAISE EXCEPTION 'over-limit quota count accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            BEGIN
+              UPDATE oryva.viewer_invitation_exchange_quotas
+              SET attempt_count = 0;
+              RAISE EXCEPTION 'zero quota count accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            BEGIN
+              INSERT INTO oryva.viewer_invitation_exchange_quotas
+                (viewer_id, window_started_at, attempt_count)
+              VALUES ('ffffffff-ffff-ffff-ffff-ffffffffffff', now(), 1);
+              RAISE EXCEPTION 'quota without a viewer accepted';
+            EXCEPTION WHEN foreign_key_violation THEN NULL;
+            END;
+          END $browser_exchange_quota$;
+          SQL
       - name: Verify singleton and state constraints
         run: |
           psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
