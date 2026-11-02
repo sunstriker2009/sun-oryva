@@ -7,7 +7,9 @@ namespace Sun.Security.Bootstrap;
 /// <summary>
 /// Internal, database-first email-ownership challenge primitives. No public
 /// invitation endpoint, email delivery, credential enrollment or activation.
-/// Callers MUST separately authorize the database-active master/admin actor.
+/// Callers MUST validate the signed JWT, exclusive realm role and subject.
+/// This store additionally checks and locks the matching database-active issuer
+/// inside the issuance transaction, so a stale or forged role cannot issue.
 /// </summary>
 public sealed class ViewerInvitationChallengeStore(NpgsqlDataSource dataSource)
 {
@@ -36,6 +38,30 @@ public sealed class ViewerInvitationChallengeStore(NpgsqlDataSource dataSource)
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction =
             (NpgsqlTransaction)await connection.BeginTransactionAsync(cancellationToken);
+
+        // Defense in depth: an issuer's role string alone is never authority.
+        // Hold a shared lock through issuance so a concurrent database-first
+        // admin deactivation cannot commit before the invitation transaction.
+        // The HTTP caller must independently validate the signed JWT and
+        // exclusive realm role; this store cannot validate an untrusted token.
+        var issuerSql = actorRole == "master"
+            ? """
+              SELECT 1 FROM oryva.master_bootstrap
+              WHERE singleton_id = 1 AND state = 'active' AND subject_id = @subject
+              FOR SHARE;
+              """
+            : """
+              SELECT 1 FROM oryva.admin_provisioning
+              WHERE state = 'active' AND keycloak_subject_id = @subject
+              FOR SHARE;
+              """;
+        await using (var issuer = new NpgsqlCommand(issuerSql, connection, transaction))
+        {
+            issuer.Parameters.AddWithValue("subject", actorSubject);
+            if (await issuer.ExecuteScalarAsync(cancellationToken) is null)
+                throw new InvalidOperationException(
+                    "Invitation issuer is not an active database-authorized master/admin.");
+        }
 
         // This row lock serializes concurrent issuers for the same viewer.
         string email;
