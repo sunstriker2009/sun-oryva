@@ -131,10 +131,11 @@ public sealed class ViewerInvitationChallengeStore(NpgsqlDataSource dataSource)
         // revocation and cancellation roll back if the new issuance fails.
         await using (var cancel = new NpgsqlCommand("""
             UPDATE oryva.viewer_invitation_outbox AS delivery
-            SET state = 'cancelled', cancelled_at = now()
+            SET state = 'cancelled', cancelled_at = now(),
+                lease_id = NULL, lease_expires_at = NULL
             FROM oryva.viewer_invitation_challenges AS challenge
             WHERE delivery.challenge_id = challenge.id
-              AND challenge.viewer_id = @viewer AND delivery.state = 'pending';
+              AND challenge.viewer_id = @viewer AND delivery.state IN ('pending', 'leased');
             """, connection, transaction))
         {
             cancel.Parameters.AddWithValue("viewer", viewerId);
@@ -272,8 +273,9 @@ public sealed class ViewerInvitationChallengeStore(NpgsqlDataSource dataSource)
         // Possession consumes the bearer token and cancels any unsent copy.
         await using (var cancel = new NpgsqlCommand("""
             UPDATE oryva.viewer_invitation_outbox
-            SET state = 'cancelled', cancelled_at = now()
-            WHERE challenge_id = @challenge AND state = 'pending';
+            SET state = 'cancelled', cancelled_at = now(),
+                lease_id = NULL, lease_expires_at = NULL
+            WHERE challenge_id = @challenge AND state IN ('pending', 'leased');
             """, connection, transaction))
         {
             cancel.Parameters.AddWithValue("challenge", challengeId);
