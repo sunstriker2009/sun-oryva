@@ -43,7 +43,7 @@ jobs:
         run: |
           docker network create oryva-e2e-net
           docker run -d --name oryva-e2e-mailpit --network oryva-e2e-net \
-            -p 127.0.0.1:8025:8025 axllent/mailpit:v1.27.2
+            -p 127.0.0.1:8025:8025 -p 127.0.0.1:1025:1025 axllent/mailpit:v1.27.2
           python - <<'PY'
           import time, urllib.request
           for _ in range(30):
@@ -139,6 +139,9 @@ jobs:
       - name: Initialize fenced invitation outbox claims
         run: |
           PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/018_viewer_invitation_outbox_leases.sql
+      - name: Initialize transactional invitation SMTP handoff schema
+        run: |
+          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/019_viewer_invitation_smtp_handoff.sql
       - name: Run one-time viewer invitation PostgreSQL security E2E
         run: dotnet run --project tests/integration/Sun.Security.ViewerInvitation.E2E/Sun.Security.ViewerInvitation.E2E.csproj -c Release
       - name: Run actual .NET bootstrap against Keycloak and PostgreSQL
