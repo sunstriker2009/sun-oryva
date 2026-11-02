@@ -236,6 +236,29 @@ jobs:
             END IF;
           END $viewer_prepared_verified$;
           SQL
+      - name: Validate cross-replica quota schema and constraints
+        run: |
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/013_management_write_quotas.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/013_management_write_quotas.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
+          DO $quota_guard$
+          BEGIN
+            BEGIN
+              INSERT INTO oryva.management_write_quotas
+                (subject_key, window_start, request_count)
+              VALUES (repeat('A', 64), now(), 121);
+              RAISE EXCEPTION 'quota overflow accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            BEGIN
+              INSERT INTO oryva.management_write_quotas
+                (subject_key, window_start, request_count)
+              VALUES ('raw-subject', now(), 1);
+              RAISE EXCEPTION 'raw subject accepted as quota key';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+          END $quota_guard$;
+          SQL
       - name: Verify singleton and state constraints
         run: |
           psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'

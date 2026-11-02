@@ -189,6 +189,147 @@ await using (var limitedApp = limitBuilder.Build())
             throw new Exception("Read-only route should not consume write quota.");
     await limitedApp.StopAsync();
 }
+// Cross-replica quota uses PostgreSQL atomic UPSERT, not local memory.
+// Two independent connection pools must share one subject's allowance.
+await using (var secondSource = NpgsqlDataSource.Create(dsn))
+{
+    var quotaA = new OryvaDistributedManagementWriteQuota(source);
+    var quotaB = new OryvaDistributedManagementWriteQuota(secondSource);
+    var quotaSubject = "subject:quota-" + Guid.NewGuid().ToString("N");
+
+    // Avoid a fixed-window boundary during the concurrent assertion.
+    if (DateTimeOffset.UtcNow.Second >= 55)
+        await Task.Delay(TimeSpan.FromSeconds(61 - DateTimeOffset.UtcNow.Second));
+    var attempts = await Task.WhenAll(Enumerable.Range(0, 10).Select(i =>
+        (i % 2 == 0 ? quotaA : quotaB).TryConsumeAsync(quotaSubject, 3)));
+    if (attempts.Count(allowed => allowed) != 3 ||
+        !await quotaB.TryConsumeAsync(quotaSubject + "-other", 3))
+        throw new Exception("Concurrent API replicas exceeded the shared PostgreSQL quota.");
+    Console.WriteLine("PASS atomic cross-replica management quota and subject isolation");
+
+    var distributedBuilder = WebApplication.CreateBuilder(new WebApplicationOptions
+    {
+        EnvironmentName = "Development"
+    });
+    distributedBuilder.WebHost.UseTestServer();
+    distributedBuilder.Services.AddSingleton(secondSource);
+    distributedBuilder.Services.AddAuthentication("E2EViewer")
+        .AddScheme<AuthenticationSchemeOptions, ViewerTestAuthenticationHandler>(
+            "E2EViewer", _ => { });
+    distributedBuilder.Services.AddAuthorization();
+    distributedBuilder.Services.AddOryvaManagementRateLimiting(120);
+    distributedBuilder.Services.AddOryvaDistributedManagementWriteQuota();
+    await using (var distributedApp = distributedBuilder.Build())
+    {
+        distributedApp.UseRouting();
+        distributedApp.UseAuthentication();
+        distributedApp.UseAuthorization();
+        distributedApp.UseRateLimiter();
+        distributedApp.UseOryvaDistributedManagementWriteQuota(2);
+        var handlerCalls = 0;
+        distributedApp.MapPost("/test/distributed-write", () =>
+            {
+                handlerCalls++;
+                return Results.Ok();
+            })
+            .RequireAuthorization()
+            .RequireRateLimiting(OryvaManagementRateLimiting.PolicyName);
+        distributedApp.MapGet("/test/distributed-read", () => Results.Ok())
+            .RequireAuthorization();
+        await distributedApp.StartAsync();
+        using var distributedClient = distributedApp.GetTestClient();
+        var httpSubject = "quota-http-" + Guid.NewGuid().ToString("N");
+
+        async Task<HttpResponseMessage> DistributedRequestAsync(
+            HttpMethod method, string route, string? caller, string? forwarded = null)
+        {
+            using var request = new HttpRequestMessage(method, route);
+            if (caller is not null) request.Headers.Add("X-Test-Subject", caller);
+            if (forwarded is not null) request.Headers.Add("X-Forwarded-For", forwarded);
+            return await distributedClient.SendAsync(request);
+        }
+
+        using (var anonymous = await DistributedRequestAsync(
+            HttpMethod.Post, "/test/distributed-write", null))
+            if (anonymous.StatusCode != HttpStatusCode.Unauthorized)
+                throw new Exception("Anonymous write reached distributed quota middleware.");
+        for (var i = 0; i < 2; i++)
+        {
+            using var allowed = await DistributedRequestAsync(
+                HttpMethod.Post, "/test/distributed-write", httpSubject);
+            if (allowed.StatusCode != HttpStatusCode.OK)
+                throw new Exception("Valid distributed quota request was denied.");
+        }
+        using (var rejected = await DistributedRequestAsync(
+            HttpMethod.Post, "/test/distributed-write", httpSubject, "203.0.113.2"))
+        {
+            if (rejected.StatusCode != HttpStatusCode.TooManyRequests ||
+                rejected.Headers.CacheControl?.NoStore != true ||
+                !(await rejected.Content.ReadAsStringAsync()).Contains(
+                    "management_rate_limit_exceeded", StringComparison.Ordinal))
+                throw new Exception("Exhausted distributed quota did not fail closed with 429.");
+        }
+        if (handlerCalls != 2)
+            throw new Exception("Quota-rejected request reached the management handler.");
+        using (var other = await DistributedRequestAsync(
+            HttpMethod.Post, "/test/distributed-write", httpSubject + "-other"))
+            if (other.StatusCode != HttpStatusCode.OK)
+                throw new Exception("Distributed quota leaked across subjects.");
+        using (var read = await DistributedRequestAsync(
+            HttpMethod.Get, "/test/distributed-read", httpSubject))
+            if (read.StatusCode != HttpStatusCode.OK)
+                throw new Exception("Read-only endpoint unexpectedly consumed write quota.");
+        await distributedApp.StopAsync();
+    }
+}
+Console.WriteLine("PASS PostgreSQL management quota HTTP 429, handler rejection and read isolation");
+
+// A database outage must reject management writes, not bypass the quota.
+var unavailableBuilder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    EnvironmentName = "Development"
+});
+unavailableBuilder.WebHost.UseTestServer();
+var unavailableDsn = new NpgsqlConnectionStringBuilder(dsn)
+{
+    Port = 1, Timeout = 1, Pooling = false
+}.ConnectionString;
+unavailableBuilder.Services.AddSingleton(NpgsqlDataSource.Create(unavailableDsn));
+unavailableBuilder.Services.AddAuthentication("E2EViewer")
+    .AddScheme<AuthenticationSchemeOptions, ViewerTestAuthenticationHandler>(
+        "E2EViewer", _ => { });
+unavailableBuilder.Services.AddAuthorization();
+unavailableBuilder.Services.AddOryvaManagementRateLimiting(120);
+unavailableBuilder.Services.AddOryvaDistributedManagementWriteQuota();
+await using (var unavailableApp = unavailableBuilder.Build())
+{
+    unavailableApp.UseRouting();
+    unavailableApp.UseAuthentication();
+    unavailableApp.UseAuthorization();
+    unavailableApp.UseRateLimiter();
+    unavailableApp.UseOryvaDistributedManagementWriteQuota(2);
+    var invoked = false;
+    unavailableApp.MapPost("/test/write-unavailable", () =>
+        {
+            invoked = true;
+            return Results.Ok();
+        })
+        .RequireAuthorization()
+        .RequireRateLimiting(OryvaManagementRateLimiting.PolicyName);
+    await unavailableApp.StartAsync();
+    using var unavailableClient = unavailableApp.GetTestClient();
+    using var request = new HttpRequestMessage(HttpMethod.Post, "/test/write-unavailable");
+    request.Headers.Add("X-Test-Subject", "offline-" + Guid.NewGuid().ToString("N"));
+    using var response = await unavailableClient.SendAsync(request);
+    if (response.StatusCode != HttpStatusCode.ServiceUnavailable ||
+        invoked ||
+        !(await response.Content.ReadAsStringAsync()).Contains(
+            "management_quota_unavailable", StringComparison.Ordinal))
+        throw new Exception("Unavailable quota database did not fail closed with 503.");
+    await unavailableApp.StopAsync();
+}
+Console.WriteLine("PASS quota database outage denies management handler with safe 503");
+
 var goodPrincipal = new ClaimsPrincipal(new ClaimsIdentity(
     [new Claim("sub", "subject-one")], "test"));
 var duplicatePrincipal = new ClaimsPrincipal(new ClaimsIdentity(

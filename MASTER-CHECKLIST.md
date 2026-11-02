@@ -60,8 +60,9 @@
 - [x] Transactional viewer reservation audit ([PR #72](https://github.com/sunstriker2009/sun-oryva/pull/72)); migration 011, real PostgreSQL/Keycloak E2E and schema validation passed all five workflows on implementation commit `c2f7babc`. Five post-merge `main` workflows passed on merge commit `0ea9a47d` (observed 2026-11-01). Preparation completion and failed Keycloak operations need additional audit coverage.
 - [ ] Secure viewer credential enrollment and invitations; full lifecycle and operational recovery tooling.
 - [x] Atomic viewer preparation completion audit (migration 012, [PR #73](https://github.com/sunstriker2009/sun-oryva/pull/73)); five PR checks passed on `e93f3016`, squash-merged as `237780bd`, and all five post-merge `main` workflows passed, including real Keycloak/PostgreSQL E2E (verified 2026-11-01).
-- [ ] Password-change and account recovery policies, audit events, API error contracts, **distributed** rate limits, and full lifecycle security E2E.
-- [x] Process-local management write throttling with authenticated-subject partitioning and HTTP tests ([PR #71](https://github.com/sunstriker2009/sun-oryva/pull/71), latest PR CI verified; distributed quotas remain outstanding).
+- [ ] Password-change and account recovery policies, audit events, API error contracts, and full lifecycle security E2E.
+- [x] PostgreSQL-backed cross-replica management write quotas (migration 013, HTTP concurrency, 429 and outage-503 E2E; [PR #75](https://github.com/sunstriker2009/sun-oryva/pull/75), five workflows passed on implementation commit `e8f0e462` before merge). Edge, login, invitation and password-recovery quotas remain outstanding.
+- [x] Process-local management write throttling with authenticated-subject partitioning and HTTP tests ([PR #71](https://github.com/sunstriker2009/sun-oryva/pull/71), verified).
 - [ ] Production Keycloak permissions, operational migrations, threat review, release gates and deployment runbooks.
 
 The M4 ledger records partial backend progress; it does **not** mean ORYVA-024 through ORYVA-026 are complete.
