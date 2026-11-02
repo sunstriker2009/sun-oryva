@@ -58,7 +58,8 @@ unsafe = {"attributes": [
     for name in ("oryva.bootstrap.owner", "oryva.provisioning.id")
 ]}
 must_reject(unsafe)
-unsafe["attributes"][0]["permissions"]["view"] = ["admin"]
+for attribute in unsafe["attributes"]:
+    attribute["permissions"]["view"] = ["admin"]
 unsafe["attributes"].append(dict(unsafe["attributes"][0]))
 must_reject(unsafe)
 print("PASS unsafe user-visible and duplicate ownership attributes fail closed")
