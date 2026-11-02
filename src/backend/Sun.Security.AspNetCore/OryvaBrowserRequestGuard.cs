@@ -55,7 +55,7 @@ public static class OryvaBrowserRequestGuard
         });
     }
 
-    private static Uri ValidateOrigin(string value)
+    internal static Uri ValidateOrigin(string value)
     {
         if (string.IsNullOrWhiteSpace(value) ||
             !Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
