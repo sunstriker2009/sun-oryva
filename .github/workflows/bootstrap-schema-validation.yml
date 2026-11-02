@@ -353,6 +353,15 @@ jobs:
             BEGIN
               INSERT INTO oryva.viewer_invitation_audit
                   (challenge_id, viewer_id, event_type, actor_subject, actor_role)
+              VALUES ('10000000-0000-0000-0000-000000000004',
+                      '00000000-0000-0000-0000-000000000003',
+                      'issued', 'ci-master', NULL);
+              RAISE EXCEPTION 'missing management audit role accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            BEGIN
+              INSERT INTO oryva.viewer_invitation_audit
+                  (challenge_id, viewer_id, event_type, actor_subject, actor_role)
               VALUES ('10000000-0000-0000-0000-000000000003',
                       '00000000-0000-0000-0000-000000000003',
                       'consumed', 'fake-recipient', 'viewer');
