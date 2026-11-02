@@ -508,6 +508,60 @@ jobs:
             END;
           END $smtp_audit$;
           SQL
+      - name: Validate browser exchange schema, revocation trigger and idempotence
+        run: |
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/020_viewer_invitation_browser_exchange.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/020_viewer_invitation_browser_exchange.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO oryva.viewer_invitation_browser_sessions
+            (id, challenge_id, viewer_id, session_digest,
+             subject_snapshot, created_at, expires_at)
+          VALUES ('30000000-0000-0000-0000-000000000001',
+                  '10000000-0000-0000-0000-000000000001',
+                  '00000000-0000-0000-0000-000000000003',
+                  repeat('F', 64), 'verified-ci-subject',
+                  now(), now() + interval '4 minutes');
+          DO $browser_exchange_schema$
+          BEGIN
+            BEGIN
+              INSERT INTO oryva.viewer_invitation_browser_sessions
+                (id, challenge_id, viewer_id, session_digest,
+                 subject_snapshot, created_at, expires_at)
+              VALUES ('30000000-0000-0000-0000-000000000002',
+                      '10000000-0000-0000-0000-000000000006',
+                      '00000000-0000-0000-0000-000000000003',
+                      'plaintext-browser-token', 'verified-ci-subject',
+                      now(), now() + interval '4 minutes');
+              RAISE EXCEPTION 'plaintext browser secret accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            BEGIN
+              INSERT INTO oryva.viewer_invitation_browser_sessions
+                (id, challenge_id, viewer_id, session_digest,
+                 subject_snapshot, created_at, expires_at)
+              VALUES ('30000000-0000-0000-0000-000000000003',
+                      '10000000-0000-0000-0000-000000000006',
+                      '00000000-0000-0000-0000-000000000003',
+                      repeat('D', 64), 'verified-ci-subject',
+                      now(), now() + interval '6 minutes');
+              RAISE EXCEPTION 'overlong browser session accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+          END $browser_exchange_schema$;
+          UPDATE oryva.viewer_accounts
+             SET email = 'browser-change@example.invalid'
+           WHERE id = '00000000-0000-0000-0000-000000000003';
+          UPDATE oryva.viewer_accounts
+             SET email = 'audit@example.invalid'
+           WHERE id = '00000000-0000-0000-0000-000000000003';
+          DO $browser_exchange_revoked$
+          BEGIN
+            IF (SELECT revoked_at FROM oryva.viewer_invitation_browser_sessions
+                WHERE id = '30000000-0000-0000-0000-000000000001') IS NULL THEN
+              RAISE EXCEPTION 'identity change and restoration revived browser session';
+            END IF;
+          END $browser_exchange_revoked$;
+          SQL
       - name: Verify singleton and state constraints
         run: |
           psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
