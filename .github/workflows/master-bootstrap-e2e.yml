@@ -64,6 +64,8 @@ jobs:
           PY
       - name: Validate effective Keycloak ownership profile and disabled marker persistence
         run: python tests/integration/keycloak_user_profile_e2e.py
+      - name: Verify disabled-account enrollment remains fail-closed
+        run: python tests/integration/keycloak_disabled_enrollment_e2e.py
       - name: Configure restricted test service account
         run: python tests/integration/setup_keycloak_e2e.py
       - name: Initialize admin provisioning schema before authorization E2E
