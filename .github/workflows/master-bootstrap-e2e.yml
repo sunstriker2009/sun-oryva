@@ -130,6 +130,9 @@ jobs:
       - name: Initialize append-only invitation event audit schema
         run: |
           PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/015_viewer_invitation_audit.sql
+      - name: Initialize invitation subject snapshot migration
+        run: |
+          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/016_viewer_invitation_subject_binding.sql
       - name: Run one-time viewer invitation PostgreSQL security E2E
         run: dotnet run --project tests/integration/Sun.Security.ViewerInvitation.E2E/Sun.Security.ViewerInvitation.E2E.csproj -c Release
       - name: Run actual .NET bootstrap against Keycloak and PostgreSQL
