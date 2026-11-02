@@ -1,6 +1,6 @@
 # ORYVA viewer invitation challenge foundation (backend v1)
 
-**Status:** Internal database and service primitives only. **No invitation, redemption or enrollment HTTP endpoint is exposed.** No SMTP delivery, browser ceremony, password-setting, Keycloak email verification, user enablement or production rollout is implemented.
+**Status:** Internal database primitives and isolated loopback Mailpit SMTP handoff only. **No invitation, redemption or enrollment HTTP endpoint is exposed.** No production SMTP delivery, browser ceremony, password-setting, Keycloak email verification, user enablement or production rollout is implemented.
 
 ## Why a separate challenge is required
 
@@ -35,7 +35,7 @@ The recipient snapshot intentionally detects email changes after issuance. A dig
 | Replay / concurrent redemption | Single atomic conditional update; exactly one winner | Browser CSRF/session binding, completion ceremony and retry/recovery policy |
 | Reissue races | PostgreSQL viewer row lock and unique outstanding challenge index | Delivery outbox and idempotent resend semantics |
 | Wrong recipient / changed identity | Email snapshot and viewer state/subject checks | Verified email delivery, canonical address policy, Keycloak ownership recheck |
-| Stolen link / referrer leakage | No HTTP route or mailer exists | One-time exchange into a short-lived, HttpOnly, Secure, SameSite browser session; no bearer token in telemetry |
+| Stolen link / referrer leakage | No public HTTP route or production mailer exists | One-time exchange into a short-lived, HttpOnly, Secure, SameSite browser session; no bearer token in telemetry |
 | Account escalation | No role assignment, credential or activation code in this milestone; issuance now requires an active PostgreSQL master/admin subject under transaction lock | Validated signed JWT and exclusive realm role at future API boundary; Keycloak credential enrollment in disabled state, explicit verified-email proof, guarded activation and complete audit |
 | Data retention / abuse | Challenge rows include issuer, expiry and terminal timestamps | Retention/cleanup policy, least-privilege database grants, append-only delivery and consumption audit |
 
@@ -85,7 +85,7 @@ envelopes using it have been cancelled or expired and securely purged.
 Reissuing a challenge cancels previous pending outbox rows within the same
 transaction; successful one-time consumption cancels the pending row too.
 The database currently permits only `pending` and `cancelled` states.
-There is **no SMTP sender, worker lease, retry, sent status or delivery claim**.
+At migration 017 there was **no SMTP sender, worker lease, retry, sent status or delivery claim**. Migrations 018–019 add leasing and isolated Mailpit handoff; no production dispatcher exists.
 The ciphertext must never be treated as a deliverable invitation without a
 future worker that locks the row, revalidates the live challenge, subject,
 recipient and expiry at handoff, implements idempotent retries, redacts logs,
@@ -114,7 +114,7 @@ lease fencing, retry delay, cancellation after reissue, expiry, subject and
 recipient substitution, and exhausted attempts. Migration 018 must precede the matching
 application version and is applied twice in schema CI.
 
-**No SMTP sender or completion acknowledgment exists.** A claim is not a
+**Migration 018 alone has no SMTP sender or completion acknowledgment.** Migration 019 adds isolated loopback Mailpit handoff and relay-acceptance auditing, not production delivery. A claim is not a
 delivery, and an expired lease must not be used to send. A future mailer
 must revalidate under a transaction-held row lock at the actual SMTP handoff,
 avoid logging plaintext bearer material, and handle ambiguous SMTP responses
@@ -149,3 +149,5 @@ covers wrong-lease rejection, single acceptance, immutable audit, reissue,
 redacted ambiguous failure and retry. Production TLS/SMTP credentials, safe
 link/session design, browser email proof, Keycloak credential enrollment,
 rate limits and release review remain blocked.
+
+**Verification:** [PR #90](https://github.com/sunstriker2009/sun-oryva/pull/90) was squash-merged as `716d12b6` after all five workflows passed on final head `793b8ce6`, including schema validation and PostgreSQL/Mailpit full-stack E2E. Post-merge main CI is separately tracked; production SMTP, credential enrollment and activation remain blocked.
