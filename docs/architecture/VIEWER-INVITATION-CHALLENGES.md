@@ -109,9 +109,9 @@ delivery cancellation. Claim eligibility requires an unconsumed, unrevoked,
 unexpired challenge and an unchanged, role-assigned viewer with the original
 Keycloak subject and recipient email. Reissue and token consumption now
 cancel both pending **and leased** deliveries and clear lease identifiers.
-The isolated PostgreSQL E2E covers twelve concurrent claimants, wrong/stale
-lease fencing, retry delay, cancellation after reissue, expiry, subject
-substitution and exhausted attempts. Migration 018 must precede the matching
+The isolated PostgreSQL E2E covers twelve concurrent claimants, wrong/stale and expired
+lease fencing, retry delay, cancellation after reissue, expiry, subject and
+recipient substitution, and exhausted attempts. Migration 018 must precede the matching
 application version and is applied twice in schema CI.
 
 **No SMTP sender or completion acknowledgment exists.** A claim is not a

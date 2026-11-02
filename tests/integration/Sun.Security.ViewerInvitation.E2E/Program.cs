@@ -258,9 +258,20 @@ try
     if (secondLease.LeaseId == firstLease.LeaseId ||
         await leasing.ReleaseForRetryAsync(firstLease))
         throw new Exception("Stale lease mutated a newer claim.");
+    // An expired lease may be reclaimed; the old worker is fenced out.
+    await ExecuteAsync("""
+        UPDATE oryva.viewer_invitation_outbox
+        SET lease_expires_at = clock_timestamp() - interval '1 second'
+        WHERE challenge_id = @id;
+        """, leaseQueued.Id);
+    var reclaimed = await leasing.ClaimNextAsync()
+        ?? throw new Exception("Expired lease was not reclaimable.");
+    if (reclaimed.LeaseId == secondLease.LeaseId ||
+        await leasing.ReleaseForRetryAsync(secondLease))
+        throw new Exception("Expired lease owner could modify reclaimed delivery.");
     var reissued = await store.IssueQueuedAsync(leaseViewer, "ci-admin", "admin", encryption);
     if ((await LoadOutboxAsync(leaseQueued.Id)).State != "cancelled" ||
-        await leasing.ReleaseForRetryAsync(secondLease))
+        await leasing.ReleaseForRetryAsync(reclaimed))
         throw new Exception("Reissue did not fence and cancel a claimed delivery.");
     // Expiry is checked at claim time and by the invalid-delivery sweep.
     await ExecuteAsync("""
@@ -285,6 +296,19 @@ try
     await ExecuteAsync("""
         UPDATE oryva.viewer_accounts
         SET keycloak_subject_id = 'ci-subject-' || replace(id::text, '-', '')
+        WHERE id = @id;
+        """, leaseViewer);
+    var emailChanged = await store.IssueQueuedAsync(leaseViewer, "ci-master", "master", encryption);
+    await ExecuteAsync("""
+        UPDATE oryva.viewer_accounts SET email = 'wrong-recipient@example.invalid'
+        WHERE id = @id;
+        """, leaseViewer);
+    if (await leasing.ClaimNextAsync() is not null ||
+        await leasing.SweepInvalidAsync() < 1 ||
+        (await LoadOutboxAsync(emailChanged.Id)).State != "cancelled")
+        throw new Exception("Changed-recipient invitation was eligible for delivery.");
+    await ExecuteAsync("""
+        UPDATE oryva.viewer_accounts SET email = username || '@example.invalid'
         WHERE id = @id;
         """, leaseViewer);
     var exhausted = await store.IssueQueuedAsync(leaseViewer, "ci-master", "master", encryption);
