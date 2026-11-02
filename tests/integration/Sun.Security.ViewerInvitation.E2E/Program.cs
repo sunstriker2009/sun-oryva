@@ -398,6 +398,57 @@ try
         throw new Exception("Failed SMTP transaction did not retain retryable state.");
     if (!await store.ConsumeAsync(failedViewer, failedCode))
         throw new Exception("Could not close failed SMTP test fixture.");
+    // Post-claim changes must be independently revalidated at SMTP handoff,
+    // not merely when a worker originally acquired its lease.
+    var noMailBaseline = await MailpitTotalAsync();
+    var disabledAtHandoff = await SeedAsync("role_assigned");
+    var disabledQueued = await store.IssueQueuedAsync(
+        disabledAtHandoff, "ci-master", "master", encryption);
+    var disabledLease = await leasing.ClaimNextAsync()
+        ?? throw new Exception("Disabled-at-handoff fixture was not leased.");
+    await ExecuteAsync("""
+        UPDATE oryva.viewer_accounts SET state = 'deactivation_pending'
+        WHERE id = @id;
+        """, disabledAtHandoff);
+    if (await mailHandoff.TrySendAsync(disabledLease) ||
+        await leasing.SweepInvalidAsync() < 1)
+        throw new Exception("Deactivated viewer was permitted to receive SMTP.");
+    var reboundAtHandoff = await SeedAsync("role_assigned");
+    var reboundQueued = await store.IssueQueuedAsync(
+        reboundAtHandoff, "ci-master", "master", encryption);
+    var reboundLease = await leasing.ClaimNextAsync()
+        ?? throw new Exception("Subject-rebound handoff fixture was not leased.");
+    await ExecuteAsync("""
+        UPDATE oryva.viewer_accounts SET keycloak_subject_id = 'substituted'
+        WHERE id = @id;
+        """, reboundAtHandoff);
+    if (await mailHandoff.TrySendAsync(reboundLease) ||
+        await leasing.SweepInvalidAsync() < 1)
+        throw new Exception("Rebound viewer was permitted to receive SMTP.");
+    var expiredAtHandoff = await SeedAsync("role_assigned");
+    var expiredQueued = await store.IssueQueuedAsync(
+        expiredAtHandoff, "ci-master", "master", encryption);
+    var expiredLease = await leasing.ClaimNextAsync()
+        ?? throw new Exception("Expired handoff fixture was not leased.");
+    await ExecuteAsync("""
+        UPDATE oryva.viewer_invitation_outbox
+        SET lease_expires_at = clock_timestamp() - interval '1 second'
+        WHERE challenge_id = @id;
+        """, expiredQueued.Id);
+    if (await mailHandoff.TrySendAsync(expiredLease))
+        throw new Exception("Expired lease was permitted to send SMTP.");
+    var (expiredEnvelope, expiredEmail, _) = await LoadOutboxAsync(expiredQueued.Id);
+    if (!await store.ConsumeAsync(expiredAtHandoff,
+        encryption.Decrypt(expiredQueued.Id, expiredAtHandoff, expiredEmail, expiredEnvelope)))
+        throw new Exception("Could not close expired handoff fixture.");
+    try
+    {
+        _ = new LoopbackMailpitInvitationTransport("smtp.example.com");
+        throw new Exception("External SMTP destination was accepted.");
+    }
+    catch (ArgumentException) { }
+    if (await MailpitTotalAsync() != noMailBaseline)
+        throw new Exception("Invalid handoff sent an unexpected SMTP message.");
     Console.WriteLine("PASS isolated Mailpit SMTP acceptance, lease fencing, audit and ambiguous retry");
 
 
