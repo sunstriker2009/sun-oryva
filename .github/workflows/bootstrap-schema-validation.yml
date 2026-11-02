@@ -392,6 +392,27 @@ jobs:
             END;
           END $invitation_audit$;
           SQL
+      - name: Validate invitation subject snapshot migration and idempotence
+        run: |
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/016_viewer_invitation_subject_binding.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/016_viewer_invitation_subject_binding.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
+          DO $subject_snapshot$
+          BEGIN
+            IF (SELECT keycloak_subject_snapshot
+                FROM oryva.viewer_invitation_challenges
+                WHERE id = '10000000-0000-0000-0000-000000000001') <> 'verified-ci-subject' THEN
+              RAISE EXCEPTION 'legacy invitation was not backfilled with exact subject';
+            END IF;
+            BEGIN
+              UPDATE oryva.viewer_invitation_challenges
+                 SET keycloak_subject_snapshot = ''
+               WHERE id = '10000000-0000-0000-0000-000000000001';
+              RAISE EXCEPTION 'empty subject snapshot accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+          END $subject_snapshot$;
+          SQL
       - name: Verify singleton and state constraints
         run: |
           psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
