@@ -114,7 +114,7 @@ async Task CheckAsync(
     if (suppliedCookie is not null)
         request.Headers.TryAddWithoutValidation("Cookie", suppliedCookie);
     if (suppliedCsrf is not null)
-        request.Headers.TryAddWithoutValidation(OryvaBrowserRequestGuard.CsrfHeaderName, suppliedCsrf);
+        request.Headers.TryAddWithoutValidation(OryvaBrowserRequestGuard.CsrfHeaderName, suppliedCsrf ?? csrf);
     if (fetchSite is not null)
         request.Headers.TryAddWithoutValidation("Sec-Fetch-Site", fetchSite);
     if (forwardedSpoof)
@@ -293,7 +293,7 @@ Console.WriteLine("PASS isolated browser bootstrap GET, origin/host/metadata/HTT
 
 async Task<HttpResponseMessage> SessionPostAsync(
     string path, string? bearer = null, bool duplicate = false,
-    string? suppliedOrigin = origin, string suppliedCsrf = csrf)
+    string? suppliedOrigin = origin, string? suppliedCsrf = null)
 {
     using var request = new HttpRequestMessage(
         HttpMethod.Post, origin + path);
