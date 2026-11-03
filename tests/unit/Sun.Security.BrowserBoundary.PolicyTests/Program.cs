@@ -302,7 +302,7 @@ async Task<HttpResponseMessage> SessionPostAsync(
         request.Headers.TryAddWithoutValidation("Origin", suppliedOrigin);
     request.Headers.TryAddWithoutValidation("Sec-Fetch-Site", "same-origin");
     request.Headers.TryAddWithoutValidation(
-        OryvaBrowserRequestGuard.CsrfHeaderName, suppliedCsrf);
+        OryvaBrowserRequestGuard.CsrfHeaderName, suppliedCsrf ?? csrf);
     var cookies = OryvaBrowserRequestGuard.CsrfCookieName + "=" + csrf;
     if (bearer is not null)
     {
