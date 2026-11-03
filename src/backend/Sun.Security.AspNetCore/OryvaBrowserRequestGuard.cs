@@ -22,6 +22,12 @@ public static class OryvaBrowserRequestGuard
 {
     public const string CsrfCookieName = "__Host-oryva-csrf";
     public const string CsrfHeaderName = "X-Oryva-Csrf";
+    private static readonly object ValidatedPostKey = new();
+
+    // An opaque per-request marker, set only after every guard check passes.
+    // Cookie helpers must not run on unmarked or rejected endpoints.
+    internal static bool HasValidatedBrowserPost(HttpContext context) =>
+        context.Items.ContainsKey(ValidatedPostKey);
 
     public static IApplicationBuilder UseOryvaBrowserRequestGuard(
         this IApplicationBuilder app, string expectedOrigin)
@@ -51,6 +57,7 @@ public static class OryvaBrowserRequestGuard
                     context.RequestAborted);
                 return;
             }
+            context.Items[ValidatedPostKey] = true;
             await next();
         });
     }
@@ -103,7 +110,7 @@ public static class OryvaBrowserRequestGuard
 
         // Reject ambiguous duplicate cookies rather than trusting the first
         // or last parser-selected value. The __Host- prefix requires a Secure,
-        // Path=/, host-only cookie at issuance; issuance is not implemented.
+        // Path=/, host-only cookie at issuance.
         if (!request.Headers.TryGetValue("Cookie", out var rawCookies) ||
             rawCookies.Count != 1 ||
             rawCookies[0]!.Split(';', StringSplitOptions.TrimEntries)
