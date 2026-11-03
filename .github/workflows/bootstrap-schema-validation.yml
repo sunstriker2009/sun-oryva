@@ -624,6 +624,42 @@ jobs:
             END;
           END $browser_admission_schema$;
           SQL
+      - name: Validate browser session lifecycle audit immutability and idempotence
+        run: |
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/023_browser_session_lifecycle_audit.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/023_browser_session_lifecycle_audit.sql
+          psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO oryva.viewer_invitation_browser_session_audit
+              (id, session_id, viewer_id, event_type)
+          VALUES ('40000000-0000-0000-0000-000000000001',
+                  '30000000-0000-0000-0000-000000000001',
+                  '00000000-0000-0000-0000-000000000003', 'rotated');
+          DO $browser_lifecycle_audit$
+          BEGIN
+            BEGIN
+              INSERT INTO oryva.viewer_invitation_browser_session_audit
+                  (id, session_id, viewer_id, event_type)
+              VALUES ('40000000-0000-0000-0000-000000000002',
+                      '30000000-0000-0000-0000-000000000001',
+                      '00000000-0000-0000-0000-000000000003', 'activated');
+              RAISE EXCEPTION 'invalid browser lifecycle event accepted';
+            EXCEPTION WHEN check_violation THEN NULL;
+            END;
+            BEGIN
+              UPDATE oryva.viewer_invitation_browser_session_audit
+                 SET event_type = 'revoked';
+              RAISE EXCEPTION 'browser lifecycle audit mutation accepted';
+            EXCEPTION WHEN raise_exception THEN
+              IF SQLERRM <> 'Browser session audit is append-only' THEN RAISE; END IF;
+            END;
+            BEGIN
+              DELETE FROM oryva.viewer_invitation_browser_session_audit;
+              RAISE EXCEPTION 'browser lifecycle audit deletion accepted';
+            EXCEPTION WHEN raise_exception THEN
+              IF SQLERRM <> 'Browser session audit is append-only' THEN RAISE; END IF;
+            END;
+          END $browser_lifecycle_audit$;
+          SQL
       - name: Verify singleton and state constraints
         run: |
           psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 <<'SQL'

@@ -34,6 +34,10 @@ This is a standalone double-submit CSRF bootstrap, **not session-bound authentic
 
 Migration 022 adds PostgreSQL-backed global and source-IP fixed-minute admission counters, with HMAC-keyed IP partitions, IPv6 /64 aggregation and fail-closed HTTP 429/503 for explicitly marked routes. The source address is taken only from `Connection.RemoteIpAddress`; raw forwarding headers are never trusted. Isolated PostgreSQL/TestServer E2E validates concurrent limits and spoof resistance. **The middleware is unregistered, and production proxy trust, sessions, Keycloak email verification, credential enrollment and activation are not delivered.** See [browser admission threat boundaries](BROWSER-ADMISSION-QUOTAS.md).
 
+## Proposed internal browser-secret lifecycle (migration 023)
+
+A focused implementation branch adds atomic, fixed-expiry bearer rotation and revocation, with append-only metadata-only audit and PostgreSQL concurrency E2E. These methods are internal and do **not** mint cookies, register HTTP endpoints, authenticate a viewer, prove Keycloak email ownership or authorize credentials/activation. **Verification pending final PR-head CI and merge.** See [browser session lifecycle](BROWSER-SESSION-LIFECYCLE.md).
+
 ## Threat boundaries and unfinished work
 
 - **Proof scope:** possession of an invitation code is not independent confirmation that Keycloak's email is verified. Neither exchange nor inspection sets `emailVerified`, writes a credential, enables an account, grants roles, or creates a Keycloak session.

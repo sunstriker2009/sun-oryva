@@ -151,6 +151,9 @@ jobs:
       - name: Initialize cross-replica browser admission quotas
         run: |
           PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/022_browser_admission_quotas.sql
+      - name: Initialize append-only browser session lifecycle audit
+        run: |
+          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/023_browser_session_lifecycle_audit.sql
       - name: Run isolated browser admission PostgreSQL and HTTP E2E
         run: dotnet run --project tests/integration/Sun.Security.BrowserAdmission.E2E/Sun.Security.BrowserAdmission.E2E.csproj -c Release
       - name: Run isolated invitation-to-browser exchange PostgreSQL security E2E

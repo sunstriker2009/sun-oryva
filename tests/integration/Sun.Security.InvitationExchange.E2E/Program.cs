@@ -250,6 +250,126 @@ try
         await ConsumedEventsAsync(throttledInvitation.Id) != 1)
         throw new Exception("Quota window rollover did not restore valid exchange.");
 
+    // Internal session lifecycle: a rotated bearer must invalidate its
+    // predecessor atomically, without extending the original five-minute TTL.
+    var lifecycleViewer = await SeedViewerAsync();
+    var lifecycleInvite = await invitations.IssueAsync(lifecycleViewer, "ci-master", "master");
+    var initial = await exchange.ExchangeAsync(lifecycleViewer, lifecycleInvite.Token)
+        ?? throw new Exception("Lifecycle fixture exchange failed.");
+    if (await exchange.RotateAsync(other, initial.BrowserSecret) is not null ||
+        await exchange.RotateAsync(lifecycleViewer, "malformed") is not null ||
+        await exchange.RevokeAsync(other, initial.BrowserSecret) ||
+        await exchange.RevokeAsync(lifecycleViewer, "malformed"))
+        throw new Exception("Wrong-viewer or malformed lifecycle bearer accepted.");
+
+    var rotations = await Task.WhenAll(Enumerable.Range(0, 16)
+        .Select(_ => exchange.RotateAsync(lifecycleViewer, initial.BrowserSecret)));
+    var rotatedWinners = rotations.Where(x => x is not null).ToArray();
+    if (rotatedWinners.Length != 1)
+        throw new Exception("Concurrent rotation did not have exactly one winner.");
+    var rotated = rotatedWinners[0]!;
+    if (rotated.Id != initial.Id ||
+        rotated.ExpiresAtUtc != initial.ExpiresAtUtc ||
+        rotated.BrowserSecret == initial.BrowserSecret ||
+        await exchange.IsLiveAsync(lifecycleViewer, initial.BrowserSecret) ||
+        !await exchange.IsLiveAsync(lifecycleViewer, rotated.BrowserSecret) ||
+        await exchange.RotateAsync(lifecycleViewer, initial.BrowserSecret) is not null)
+        throw new Exception("Rotation replay, binding or fixed expiry failed.");
+
+    var rotatedJson = JsonSerializer.Serialize(new { Nested = (object)rotated },
+        new JsonSerializerOptions(JsonSerializerDefaults.Web));
+    if (rotatedJson.Contains(rotated.BrowserSecret, StringComparison.Ordinal) ||
+        rotated.ToString().Contains(rotated.BrowserSecret, StringComparison.Ordinal))
+        throw new Exception("Rotated secret leaked through serialization.");
+
+    // An audit write failure must roll back the digest rotation itself.
+    await using (var connection = await source.OpenConnectionAsync())
+    await using (var command = new NpgsqlCommand("""
+        CREATE FUNCTION oryva.ci_reject_browser_lifecycle_audit()
+        RETURNS trigger LANGUAGE plpgsql AS $fn$
+        BEGIN RAISE EXCEPTION 'CI lifecycle audit insert failure'; END $fn$;
+        CREATE TRIGGER ci_reject_browser_lifecycle_audit
+        BEFORE INSERT ON oryva.viewer_invitation_browser_session_audit
+        FOR EACH ROW EXECUTE FUNCTION oryva.ci_reject_browser_lifecycle_audit();
+        """, connection))
+        await command.ExecuteNonQueryAsync();
+    try
+    {
+        try
+        {
+            await exchange.RotateAsync(lifecycleViewer, rotated.BrowserSecret);
+            throw new Exception("Failed lifecycle audit unexpectedly committed rotation.");
+        }
+        catch (PostgresException ex) when (ex.MessageText == "CI lifecycle audit insert failure") { }
+    }
+    finally
+    {
+        await using var connection = await source.OpenConnectionAsync();
+        await using var command = new NpgsqlCommand("""
+            DROP TRIGGER ci_reject_browser_lifecycle_audit
+                ON oryva.viewer_invitation_browser_session_audit;
+            DROP FUNCTION oryva.ci_reject_browser_lifecycle_audit();
+            """, connection);
+        await command.ExecuteNonQueryAsync();
+    }
+    if (!await exchange.IsLiveAsync(lifecycleViewer, rotated.BrowserSecret))
+        throw new Exception("Audit failure did not roll back browser rotation.");
+
+    var revocations = await Task.WhenAll(Enumerable.Range(0, 16)
+        .Select(_ => exchange.RevokeAsync(lifecycleViewer, rotated.BrowserSecret)));
+    if (revocations.Count(x => x) != 1 ||
+        await exchange.RevokeAsync(lifecycleViewer, rotated.BrowserSecret) ||
+        await exchange.IsLiveAsync(lifecycleViewer, rotated.BrowserSecret) ||
+        await exchange.RotateAsync(lifecycleViewer, rotated.BrowserSecret) is not null)
+        throw new Exception("Concurrent revocation or post-revocation replay failed.");
+
+    await using (var connection = await source.OpenConnectionAsync())
+    await using (var command = new NpgsqlCommand("""
+        SELECT event_type, count(*) FROM oryva.viewer_invitation_browser_session_audit
+        WHERE session_id = @session GROUP BY event_type;
+        """, connection))
+    {
+        command.Parameters.AddWithValue("session", initial.Id);
+        await using var reader = await command.ExecuteReaderAsync();
+        var events = new Dictionary<string, long>();
+        while (await reader.ReadAsync())
+            events.Add(reader.GetString(0), reader.GetInt64(1));
+        if (events.Count != 2 || events.GetValueOrDefault("rotated") != 1 ||
+            events.GetValueOrDefault("revoked") != 1)
+            throw new Exception("Append-only browser lifecycle audit mismatch.");
+    }
+
+    var expiryInvite = await invitations.IssueAsync(lifecycleViewer, "ci-master", "master");
+    var expiring = await exchange.ExchangeAsync(lifecycleViewer, expiryInvite.Token)
+        ?? throw new Exception("Expiry lifecycle fixture exchange failed.");
+    await using (var connection = await source.OpenConnectionAsync())
+    await using (var command = new NpgsqlCommand("""
+        UPDATE oryva.viewer_invitation_browser_sessions
+        SET expires_at = created_at + interval '1 microsecond'
+        WHERE id = @session;
+        """, connection))
+    {
+        command.Parameters.AddWithValue("session", expiring.Id);
+        await command.ExecuteNonQueryAsync();
+    }
+    if (await exchange.RotateAsync(lifecycleViewer, expiring.BrowserSecret) is not null ||
+        await exchange.RevokeAsync(lifecycleViewer, expiring.BrowserSecret))
+        throw new Exception("Expired browser bearer was renewed or revoked.");
+
+    // Reissue invalidates an already rotated secret as well as its predecessor.
+    var reissueInvite = await invitations.IssueAsync(lifecycleViewer, "ci-master", "master");
+    var beforeReissue = await exchange.ExchangeAsync(lifecycleViewer, reissueInvite.Token)
+        ?? throw new Exception("Reissue lifecycle fixture exchange failed.");
+    var afterRotation = await exchange.RotateAsync(lifecycleViewer, beforeReissue.BrowserSecret)
+        ?? throw new Exception("Reissue lifecycle fixture rotation failed.");
+    _ = await invitations.IssueAsync(lifecycleViewer, "ci-master", "master");
+    if (await exchange.IsLiveAsync(lifecycleViewer, afterRotation.BrowserSecret) ||
+        await exchange.RotateAsync(lifecycleViewer, afterRotation.BrowserSecret) is not null)
+        throw new Exception("Reissue revived a rotated browser bearer.");
+
+    Console.WriteLine("PASS 16-way atomic browser rotation/revocation, replay denial and fixed expiry");
+    Console.WriteLine("PASS lifecycle audit rollback, non-disclosure, expiry and reissue revocation");
+
     if (await GetViewerValueAsync(viewer, "state") != "role_assigned")
         throw new Exception("Browser exchange changed viewer activation state.");
 

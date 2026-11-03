@@ -176,6 +176,143 @@ public sealed class ViewerInvitationBrowserExchangeStore(NpgsqlDataSource dataSo
     }
 
     /// <summary>
+    /// Atomically replaces an existing five-minute browser bearer secret.
+    /// Only one concurrent caller holding the previous secret can win.
+    /// Expiration is NEVER extended. This is not a login, email proof,
+    /// password-write grant or authorization to activate a Keycloak identity.
+    /// The future HTTP boundary must provide CSRF, cookie and IP protections.
+    /// </summary>
+    public async Task<ViewerInvitationBrowserExchange?> RotateAsync(
+        Guid viewerId, string? browserSecret,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsTokenShape(browserSecret)) return null;
+        var nextSecret = NewSecret();
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction =
+            (NpgsqlTransaction)await connection.BeginTransactionAsync(cancellationToken);
+
+        // Viewer lock first, matching invitation issuance/deactivation ordering.
+        if (!await LockLiveViewerAsync(connection, transaction, viewerId, cancellationToken))
+            return null;
+
+        Guid sessionId;
+        DateTime expiresAtUtc;
+        await using (var update = new NpgsqlCommand("""
+            UPDATE oryva.viewer_invitation_browser_sessions AS browser
+            SET session_digest = @newDigest
+            FROM oryva.viewer_invitation_challenges AS challenge,
+                 oryva.viewer_accounts AS viewer
+            WHERE browser.viewer_id = @viewer
+              AND browser.session_digest = @oldDigest
+              AND browser.revoked_at IS NULL
+              AND browser.expires_at > clock_timestamp()
+              AND challenge.id = browser.challenge_id
+              AND challenge.viewer_id = browser.viewer_id
+              AND challenge.consumed_at IS NOT NULL
+              AND challenge.revoked_at IS NULL
+              AND viewer.id = browser.viewer_id
+              AND viewer.state = 'role_assigned'
+              AND viewer.keycloak_subject_id = browser.subject_snapshot
+              AND challenge.keycloak_subject_snapshot = browser.subject_snapshot
+              AND lower(viewer.email) = lower(challenge.recipient_email)
+            RETURNING browser.id, browser.expires_at;
+            """, connection, transaction))
+        {
+            update.Parameters.AddWithValue("viewer", viewerId);
+            update.Parameters.AddWithValue("oldDigest", Digest(browserSecret!));
+            update.Parameters.AddWithValue("newDigest", Digest(nextSecret));
+            await using var reader = await update.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken)) return null;
+            sessionId = reader.GetGuid(0);
+            expiresAtUtc = reader.GetDateTime(1);
+        }
+
+        await RecordLifecycleAuditAsync(
+            connection, transaction, sessionId, viewerId, "rotated", cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return new ViewerInvitationBrowserExchange(sessionId, nextSecret, expiresAtUtc);
+    }
+
+    /// <summary>
+    /// One-time, transactional browser bearer revocation. A stale, wrong-viewer,
+    /// expired or malformed bearer cannot revoke a different session.
+    /// Revocation does not mutate Keycloak or any viewer role/state.
+    /// </summary>
+    public async Task<bool> RevokeAsync(
+        Guid viewerId, string? browserSecret,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsTokenShape(browserSecret)) return false;
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction =
+            (NpgsqlTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        if (!await LockLiveViewerAsync(connection, transaction, viewerId, cancellationToken))
+            return false;
+
+        await using var update = new NpgsqlCommand("""
+            UPDATE oryva.viewer_invitation_browser_sessions AS browser
+            SET revoked_at = clock_timestamp()
+            FROM oryva.viewer_invitation_challenges AS challenge,
+                 oryva.viewer_accounts AS viewer
+            WHERE browser.viewer_id = @viewer
+              AND browser.session_digest = @digest
+              AND browser.revoked_at IS NULL
+              AND browser.expires_at > clock_timestamp()
+              AND challenge.id = browser.challenge_id
+              AND challenge.viewer_id = browser.viewer_id
+              AND challenge.consumed_at IS NOT NULL
+              AND challenge.revoked_at IS NULL
+              AND viewer.id = browser.viewer_id
+              AND viewer.state = 'role_assigned'
+              AND viewer.keycloak_subject_id = browser.subject_snapshot
+              AND challenge.keycloak_subject_snapshot = browser.subject_snapshot
+              AND lower(viewer.email) = lower(challenge.recipient_email)
+            RETURNING browser.id;
+            """, connection, transaction);
+        update.Parameters.AddWithValue("viewer", viewerId);
+        update.Parameters.AddWithValue("digest", Digest(browserSecret!));
+        if (await update.ExecuteScalarAsync(cancellationToken) is not Guid sessionId)
+            return false;
+
+        await RecordLifecycleAuditAsync(
+            connection, transaction, sessionId, viewerId, "revoked", cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
+    }
+
+    private static async Task<bool> LockLiveViewerAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction,
+        Guid viewerId, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand("""
+            SELECT 1 FROM oryva.viewer_accounts
+            WHERE id = @viewer AND state = 'role_assigned'
+              AND keycloak_subject_id IS NOT NULL
+            FOR SHARE;
+            """, connection, transaction);
+        command.Parameters.AddWithValue("viewer", viewerId);
+        return await command.ExecuteScalarAsync(cancellationToken) is not null;
+    }
+
+    private static async Task RecordLifecycleAuditAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction,
+        Guid sessionId, Guid viewerId, string eventType,
+        CancellationToken cancellationToken)
+    {
+        await using var audit = new NpgsqlCommand("""
+            INSERT INTO oryva.viewer_invitation_browser_session_audit
+                (id, session_id, viewer_id, event_type)
+            VALUES (@id, @session, @viewer, @event);
+            """, connection, transaction);
+        audit.Parameters.AddWithValue("id", Guid.NewGuid());
+        audit.Parameters.AddWithValue("session", sessionId);
+        audit.Parameters.AddWithValue("viewer", viewerId);
+        audit.Parameters.AddWithValue("event", eventType);
+        await audit.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>
     /// Point-in-time INTERNAL inspection only. Never use this as authentication,
     /// a password-write authorization, or an activation gate. A future
     /// credential transaction must recheck the identity under its own locks.
