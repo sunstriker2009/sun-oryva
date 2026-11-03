@@ -1,6 +1,6 @@
 # Opt-in browser bearer cookie boundary
 
-**Status:** proposed implementation, CI and merge not yet verified. No production API route, browser authentication, Keycloak credential mutation, email ownership verification, SMTP dispatch or account activation.
+**Status:** internal opt-in implementation verified and merged in [PR #110](https://github.com/sunstriker2009/sun-oryva/pull/110) (`a30e0a25`); all four final-head PR workflows passed on `d05a607a`, including full-stack PostgreSQL/Keycloak E2E. Post-merge main CI is separately tracked. No production API route, browser authentication, Keycloak credential mutation, email ownership verification, SMTP dispatch or account activation.
 
 ## Contract
 
@@ -26,4 +26,4 @@ All three methods set non-cacheable, no-referrer response headers when mutating 
 
 `tests/unit/Sun.Security.BrowserBoundary.PolicyTests` uses an isolated ASP.NET TestServer to exercise guarded issuance, cookie replacement, fixed-expiry bounds, duplicate/malformed cookie rejection, origin and CSRF rejection, unmarked endpoint denial, and host-only clearing. It intentionally does **not** simulate Keycloak email verification or claim production enrollment readiness.
 
-**Do not mark this milestone verified until final-head PR CI passes and GitHub confirms mergeability.**
+**Verification scope:** GitHub confirmed clean mergeability and four final-head PR checks passed before squash merge. The TestServer tests verify cookie transport only; no public browser ceremony, email ownership proof, Keycloak credential enrollment or production release gate is complete.
