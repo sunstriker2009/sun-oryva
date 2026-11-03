@@ -52,6 +52,42 @@ app.MapPost("/unmarked", () =>
     unmarkedCalls++;
     return Results.Ok();
 });
+
+var browserBearerOne = new string('C', 43); // Test-only; not a real browser secret.
+var browserBearerTwo = new string('D', 43);
+app.MapPost("/session/issue", (HttpContext context) =>
+    OryvaBrowserSessionCookie.TryIssue(context, browserBearerOne,
+        DateTimeOffset.UtcNow.AddMinutes(4))
+        ? Results.NoContent() : Results.StatusCode(403))
+    .WithMetadata(new OryvaBrowserCeremonyAttribute());
+app.MapPost("/session/replace", (HttpContext context) =>
+    OryvaBrowserSessionCookie.TryIssue(context, browserBearerTwo,
+        DateTimeOffset.UtcNow.AddMinutes(3))
+        ? Results.NoContent() : Results.StatusCode(403))
+    .WithMetadata(new OryvaBrowserCeremonyAttribute());
+app.MapPost("/session/expired", (HttpContext context) =>
+    OryvaBrowserSessionCookie.TryIssue(context, browserBearerOne,
+        DateTimeOffset.UtcNow.AddSeconds(-1))
+        ? Results.NoContent() : Results.StatusCode(403))
+    .WithMetadata(new OryvaBrowserCeremonyAttribute());
+app.MapPost("/session/overlong", (HttpContext context) =>
+    OryvaBrowserSessionCookie.TryIssue(context, browserBearerOne,
+        DateTimeOffset.UtcNow.AddMinutes(6))
+        ? Results.NoContent() : Results.StatusCode(403))
+    .WithMetadata(new OryvaBrowserCeremonyAttribute());
+app.MapPost("/session/read", (HttpContext context) =>
+    OryvaBrowserSessionCookie.TryReadUntrustedBearer(context, out _)
+        ? Results.NoContent() : Results.BadRequest())
+    .WithMetadata(new OryvaBrowserCeremonyAttribute());
+app.MapPost("/session/clear", (HttpContext context) =>
+    OryvaBrowserSessionCookie.TryClear(context)
+        ? Results.NoContent() : Results.StatusCode(403))
+    .WithMetadata(new OryvaBrowserCeremonyAttribute());
+app.MapPost("/session/unmarked", (HttpContext context) =>
+    OryvaBrowserSessionCookie.TryIssue(context, browserBearerOne,
+        DateTimeOffset.UtcNow.AddMinutes(4))
+        ? Results.NoContent() : Results.StatusCode(403));
+
 await app.StartAsync();
 using var client = app.GetTestClient();
 
@@ -78,7 +114,7 @@ async Task CheckAsync(
     if (suppliedCookie is not null)
         request.Headers.TryAddWithoutValidation("Cookie", suppliedCookie);
     if (suppliedCsrf is not null)
-        request.Headers.TryAddWithoutValidation(OryvaBrowserRequestGuard.CsrfHeaderName, suppliedCsrf);
+        request.Headers.TryAddWithoutValidation(OryvaBrowserRequestGuard.CsrfHeaderName, suppliedCsrf ?? csrf);
     if (fetchSite is not null)
         request.Headers.TryAddWithoutValidation("Sec-Fetch-Site", fetchSite);
     if (forwardedSpoof)
@@ -253,6 +289,116 @@ foreach (var invalid in new[] { "http://enroll.oryva.example",
 
 Console.WriteLine("PASS opt-in CSRF bootstrap: 256-bit unique token, HttpOnly __Host- cookie, five-minute TTL");
 Console.WriteLine("PASS isolated browser bootstrap GET, origin/host/metadata/HTTPS denial and POST guard round-trip");
+
+
+async Task<HttpResponseMessage> SessionPostAsync(
+    string path, string? bearer = null, bool duplicate = false,
+    string? suppliedOrigin = origin, string? suppliedCsrf = null)
+{
+    using var request = new HttpRequestMessage(
+        HttpMethod.Post, origin + path);
+    request.Headers.Host = "enroll.oryva.example";
+    if (suppliedOrigin is not null)
+        request.Headers.TryAddWithoutValidation("Origin", suppliedOrigin);
+    request.Headers.TryAddWithoutValidation("Sec-Fetch-Site", "same-origin");
+    request.Headers.TryAddWithoutValidation(
+        OryvaBrowserRequestGuard.CsrfHeaderName, suppliedCsrf ?? csrf);
+    var cookies = OryvaBrowserRequestGuard.CsrfCookieName + "=" + csrf;
+    if (bearer is not null)
+    {
+        var session = OryvaBrowserSessionCookie.Name + "=" + bearer;
+        cookies += "; " + session;
+        if (duplicate) cookies += "; " + session;
+    }
+    request.Headers.TryAddWithoutValidation("Cookie", cookies);
+    return await client.SendAsync(request);
+}
+
+using (var issued = await SessionPostAsync("/session/issue"))
+{
+    if (issued.StatusCode != HttpStatusCode.NoContent ||
+        issued.Headers.CacheControl?.NoStore != true ||
+        !issued.Headers.TryGetValues("Set-Cookie", out var values))
+        throw new Exception("Guarded browser session cookie was not issued securely.");
+    var issuedCookies = values.ToArray();
+    if (issuedCookies.Length != 1)
+        throw new Exception("Unexpected additional browser cookie.");
+    var c = issuedCookies[0];
+    if (!c.StartsWith(OryvaBrowserSessionCookie.Name + "=" + browserBearerOne + ";",
+            StringComparison.Ordinal) ||
+        !c.Contains("httponly", StringComparison.OrdinalIgnoreCase) ||
+        !c.Contains("secure", StringComparison.OrdinalIgnoreCase) ||
+        !c.Contains("samesite=strict", StringComparison.OrdinalIgnoreCase) ||
+        !c.Contains("path=/", StringComparison.OrdinalIgnoreCase) ||
+        !c.Contains("max-age=", StringComparison.OrdinalIgnoreCase) ||
+        !c.Contains("expires=", StringComparison.OrdinalIgnoreCase) ||
+        c.Contains("domain=", StringComparison.OrdinalIgnoreCase) ||
+        (await issued.Content.ReadAsStringAsync()).Contains(browserBearerOne,
+            StringComparison.Ordinal))
+        throw new Exception("Browser bearer cookie attributes or redaction violated.");
+}
+using (var replaced = await SessionPostAsync("/session/replace", browserBearerOne))
+{
+    if (replaced.StatusCode != HttpStatusCode.NoContent ||
+        !replaced.Headers.TryGetValues("Set-Cookie", out var values) ||
+        !values.Single().StartsWith(OryvaBrowserSessionCookie.Name + "=" +
+            browserBearerTwo + ";", StringComparison.Ordinal))
+        throw new Exception("Browser bearer replacement cookie missing.");
+}
+foreach (var path in new[] { "/session/expired", "/session/overlong" })
+{
+    using var denied = await SessionPostAsync(path);
+    if (denied.StatusCode != HttpStatusCode.Forbidden ||
+        denied.Headers.Contains("Set-Cookie"))
+        throw new Exception("Invalid database expiry minted a browser bearer.");
+}
+using (var read = await SessionPostAsync("/session/read", browserBearerTwo))
+{
+    if (read.StatusCode != HttpStatusCode.NoContent)
+        throw new Exception("Well-shaped untrusted browser cookie not parsed.");
+}
+foreach (var (bearer, duplicate) in new (string?, bool)[]
+{
+    (null, false), ("short", false), (browserBearerTwo, true)
+})
+{
+    using var denied = await SessionPostAsync("/session/read", bearer, duplicate);
+    if (denied.StatusCode != HttpStatusCode.BadRequest)
+        throw new Exception("Missing, malformed or duplicate browser cookie accepted.");
+}
+using (var foreign = await SessionPostAsync("/session/issue",
+    suppliedOrigin: "https://attacker.example"))
+{
+    if (foreign.StatusCode != HttpStatusCode.Forbidden ||
+        foreign.Headers.Contains("Set-Cookie"))
+        throw new Exception("Cross-origin request issued a browser bearer.");
+}
+using (var unmarked = await SessionPostAsync("/session/unmarked"))
+{
+    if (unmarked.StatusCode != HttpStatusCode.Forbidden ||
+        unmarked.Headers.Contains("Set-Cookie"))
+        throw new Exception("Unmarked endpoint bypassed guarded cookie issuance.");
+}
+using (var cleared = await SessionPostAsync("/session/clear", browserBearerTwo))
+{
+    if (cleared.StatusCode != HttpStatusCode.NoContent ||
+        cleared.Headers.CacheControl?.NoStore != true ||
+        !cleared.Headers.TryGetValues("Set-Cookie", out var values))
+        throw new Exception("Guarded cookie clearing failed.");
+    var deleted = values.ToArray();
+    foreach (var name in new[] { OryvaBrowserSessionCookie.Name,
+        OryvaBrowserRequestGuard.CsrfCookieName })
+    {
+        if (!deleted.Any(c => c.StartsWith(name + "=", StringComparison.Ordinal) &&
+            c.Contains("expires=", StringComparison.OrdinalIgnoreCase) &&
+            c.Contains("path=/", StringComparison.OrdinalIgnoreCase) &&
+            !c.Contains("domain=", StringComparison.OrdinalIgnoreCase)))
+            throw new Exception("Browser or CSRF cookie was not cleared host-only.");
+    }
+}
+Console.WriteLine("PASS opt-in guarded browser bearer issue, replacement, expiry cap and clearing");
+Console.WriteLine("PASS cookie duplicate rejection, origin/CSRF boundary, no-store and non-disclosure");
+Console.WriteLine("PASS cookie parsing alone does not authenticate or activate a viewer");
 
 await app.StopAsync();
 Console.WriteLine("PASS browser POST HTTPS, exact origin/host, fetch metadata and double-submit CSRF");
