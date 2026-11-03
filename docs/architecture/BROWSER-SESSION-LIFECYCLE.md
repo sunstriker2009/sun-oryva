@@ -22,4 +22,4 @@ Migration `023_browser_session_lifecycle_audit.sql` creates append-only `rotated
 
 The isolated PostgreSQL integration test extends `Sun.Security.InvitationExchange.E2E` with 16 concurrent rotations and 16 revocations, replay and wrong-viewer denial, fixed expiry, JSON redaction, transactional audit-failure rollback, reissue invalidation and append-only event counts. The schema workflow applies migration 023 twice and rejects invalid events, UPDATE and DELETE. The full-stack workflow provisions the migration before executing the PostgreSQL security E2E.
 
-**Do not mark the milestone verified until the final PR-head workflows pass.** Passing this internal test does not complete public browser enrollment or backend v1.
+**Verification:** all five final-head PR #108 workflows passed on `5212c2fb` (CI, schema, Keycloak mapping, master concurrency, full-stack PostgreSQL/Keycloak E2E), and GitHub confirmed mergeability before squash merge `9d326998`. Post-merge main CI remains separately unverified. Passing this internal test does not complete public browser enrollment or backend v1.

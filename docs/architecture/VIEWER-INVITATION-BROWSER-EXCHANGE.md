@@ -34,9 +34,9 @@ This is a standalone double-submit CSRF bootstrap, **not session-bound authentic
 
 Migration 022 adds PostgreSQL-backed global and source-IP fixed-minute admission counters, with HMAC-keyed IP partitions, IPv6 /64 aggregation and fail-closed HTTP 429/503 for explicitly marked routes. The source address is taken only from `Connection.RemoteIpAddress`; raw forwarding headers are never trusted. Isolated PostgreSQL/TestServer E2E validates concurrent limits and spoof resistance. **The middleware is unregistered, and production proxy trust, sessions, Keycloak email verification, credential enrollment and activation are not delivered.** See [browser admission threat boundaries](BROWSER-ADMISSION-QUOTAS.md).
 
-## Proposed internal browser-secret lifecycle (migration 023)
+## Verified internal browser-secret lifecycle (migration 023)
 
-A focused implementation branch adds atomic, fixed-expiry bearer rotation and revocation, with append-only metadata-only audit and PostgreSQL concurrency E2E. These methods are internal and do **not** mint cookies, register HTTP endpoints, authenticate a viewer, prove Keycloak email ownership or authorize credentials/activation. **Verification pending final PR-head CI and merge.** See [browser session lifecycle](BROWSER-SESSION-LIFECYCLE.md).
+[PR #108](https://github.com/sunstriker2009/sun-oryva/pull/108) added atomic, fixed-expiry bearer rotation and revocation with append-only metadata-only audit and PostgreSQL concurrency E2E. **All five final PR-head workflows passed on `5212c2fb` and PR #108 merged as `9d326998`**; post-merge main CI is separate. These methods remain internal: no cookies, HTTP enrollment, authentication, Keycloak email ownership proof or credential/activation authorization. See [browser session lifecycle](BROWSER-SESSION-LIFECYCLE.md).
 
 ## Threat boundaries and unfinished work
 
