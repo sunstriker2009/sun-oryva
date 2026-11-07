@@ -25,6 +25,7 @@ jobs:
           dotnet run --project tests/unit/Sun.Security.SmtpTransport.PolicyTests/Sun.Security.SmtpTransport.PolicyTests.csproj -c Release
           dotnet run --project tests/unit/Sun.Security.InvitationHealth.PolicyTests/Sun.Security.InvitationHealth.PolicyTests.csproj -c Release
           dotnet run --project tests/unit/Sun.Security.BrowserBoundary.PolicyTests/Sun.Security.BrowserBoundary.PolicyTests.csproj -c Release
+          dotnet run --project tests/unit/Sun.Security.GuardedSession.PolicyTests/Sun.Security.GuardedSession.PolicyTests.csproj -c Release
   frontend:
     runs-on: ubuntu-latest
     steps:
