@@ -169,9 +169,20 @@ try
 finally
 {
     await using var connection = await source.OpenConnectionAsync();
-    await using (var cleanup = new NpgsqlCommand(
-        "DELETE FROM oryva.viewer_accounts WHERE id = @viewer;", connection))
+    // Match existing invitation E2E cleanup order to satisfy foreign keys.
+    foreach (var sql in new[]
     {
+        "DELETE FROM oryva.viewer_invitation_browser_sessions WHERE viewer_id = @viewer;",
+        """
+        DELETE FROM oryva.viewer_invitation_outbox
+        WHERE challenge_id IN
+            (SELECT id FROM oryva.viewer_invitation_challenges WHERE viewer_id = @viewer);
+        """,
+        "DELETE FROM oryva.viewer_invitation_challenges WHERE viewer_id = @viewer;",
+        "DELETE FROM oryva.viewer_accounts WHERE id = @viewer;"
+    })
+    {
+        await using var cleanup = new NpgsqlCommand(sql, connection);
         cleanup.Parameters.AddWithValue("viewer", viewer);
         await cleanup.ExecuteNonQueryAsync();
     }
