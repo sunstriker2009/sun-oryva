@@ -75,6 +75,20 @@ try
         await lifecycle.RevokeAsync(ctx, Guid.NewGuid())
             ? Results.NoContent() : Results.StatusCode(403))
         .WithMetadata(new OryvaBrowserCeremonyAttribute());
+    // A response that has already started must not consume or revoke the
+    // database bearer, because a replacement/clearing cookie cannot be sent.
+    app.MapPost("/rotate/response-started", async (HttpContext ctx) =>
+    {
+        await ctx.Response.WriteAsync("started");
+        if (await lifecycle.RotateAsync(ctx, viewer))
+            throw new Exception("Started response rotated a browser bearer.");
+    }).WithMetadata(new OryvaBrowserCeremonyAttribute());
+    app.MapPost("/revoke/response-started", async (HttpContext ctx) =>
+    {
+        await ctx.Response.WriteAsync("started");
+        if (await lifecycle.RevokeAsync(ctx, viewer))
+            throw new Exception("Started response revoked a browser bearer.");
+    }).WithMetadata(new OryvaBrowserCeremonyAttribute());
     app.MapPost("/revoke", async (HttpContext ctx) =>
         await lifecycle.RevokeAsync(ctx, viewer)
             ? Results.NoContent() : Results.StatusCode(403))
@@ -134,6 +148,19 @@ try
             denied.Headers.Contains("Set-Cookie") ||
             !await sessions.IsLiveAsync(viewer, initial.BrowserSecret))
             throw new Exception("Cross-viewer session mutation was permitted.");
+    }
+
+    foreach (var startedRoute in new[]
+    {
+        "/rotate/response-started", "/revoke/response-started"
+    })
+    {
+        using var started = await PostAsync(startedRoute, initial.BrowserSecret, origin, csrf);
+        if (started.StatusCode != HttpStatusCode.OK ||
+            await started.Content.ReadAsStringAsync() != "started" ||
+            started.Headers.Contains("Set-Cookie") ||
+            !await sessions.IsLiveAsync(viewer, initial.BrowserSecret))
+            throw new Exception("Started response mutated or disclosed the live session.");
     }
 
     using var rotatedResponse = await PostAsync("/rotate", initial.BrowserSecret, origin, csrf);

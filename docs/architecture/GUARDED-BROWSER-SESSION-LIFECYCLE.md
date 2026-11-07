@@ -28,3 +28,7 @@ observed passing. No public route, Keycloak mutation or account activation is
 introduced. Remaining release gates include response-header failure handling,
 independent email ownership proof, disabled-account credential enrollment,
 password recovery, production SMTP/proxy review and full lifecycle E2E.
+
+## Response-started regression (pending CI)
+
+The PostgreSQL/TestServer suite now tests guarded rotation and revocation after the HTTP response has started. Both must reject before changing the database bearer, leave the original session live, and avoid Set-Cookie. This is a preflight safety check, not proof of recovery from transport failure **after** PostgreSQL commit; those ambiguous delivery outcomes still require an explicit fail-closed client recovery design and security review. No production route is enabled.
