@@ -65,6 +65,16 @@ try
         await lifecycle.RotateAsync(ctx, viewer)
             ? Results.NoContent() : Results.StatusCode(403))
         .WithMetadata(new OryvaBrowserCeremonyAttribute());
+    // A well-shaped cookie must never authorize a different viewer, even when
+    // the HTTP guard and CSRF token are valid.
+    app.MapPost("/rotate/wrong-viewer", async (HttpContext ctx) =>
+        await lifecycle.RotateAsync(ctx, Guid.NewGuid())
+            ? Results.NoContent() : Results.StatusCode(403))
+        .WithMetadata(new OryvaBrowserCeremonyAttribute());
+    app.MapPost("/revoke/wrong-viewer", async (HttpContext ctx) =>
+        await lifecycle.RevokeAsync(ctx, Guid.NewGuid())
+            ? Results.NoContent() : Results.StatusCode(403))
+        .WithMetadata(new OryvaBrowserCeremonyAttribute());
     app.MapPost("/revoke", async (HttpContext ctx) =>
         await lifecycle.RevokeAsync(ctx, viewer)
             ? Results.NoContent() : Results.StatusCode(403))
@@ -111,6 +121,19 @@ try
         if (denied.StatusCode != HttpStatusCode.Forbidden ||
             !await sessions.IsLiveAsync(viewer, initial.BrowserSecret))
             throw new Exception("Duplicate bearer invalidated the session.");
+    }
+
+    foreach (var wrongViewerRoute in new[]
+    {
+        "/rotate/wrong-viewer", "/revoke/wrong-viewer"
+    })
+    {
+        using var denied = await PostAsync(
+            wrongViewerRoute, initial.BrowserSecret, origin, csrf);
+        if (denied.StatusCode != HttpStatusCode.Forbidden ||
+            denied.Headers.Contains("Set-Cookie") ||
+            !await sessions.IsLiveAsync(viewer, initial.BrowserSecret))
+            throw new Exception("Cross-viewer session mutation was permitted.");
     }
 
     using var rotatedResponse = await PostAsync("/rotate", initial.BrowserSecret, origin, csrf);
@@ -197,7 +220,7 @@ try
     }
     await app.StopAsync();
     Console.WriteLine("PASS guarded PostgreSQL/TestServer rotation, 16-way HTTP contention, replay and revocation");
-    Console.WriteLine("PASS origin/CSRF/duplicate-cookie denial, host-only cookie attributes");
+    Console.WriteLine("PASS origin/CSRF/duplicate-cookie/cross-viewer denial, host-only cookie attributes");
     Console.WriteLine("PASS viewer remains role_assigned; no Keycloak activation");
 }
 finally
