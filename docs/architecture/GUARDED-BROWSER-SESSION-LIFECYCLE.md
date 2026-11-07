@@ -11,6 +11,6 @@ The opt-in `OryvaGuardedBrowserSessionLifecycle` bridges the existing same-origi
 
 ## Validation status
 
-The isolated `tests/unit/Sun.Security.GuardedSession.PolicyTests` verifies that unguarded and missing-cookie calls reject before opening a database connection. **Not yet verified:** PostgreSQL/TestServer success paths, concurrent rotation, stale-bearer replay, expiry, response-header failures and actual CI execution. The class is intentionally not wired to a public API until those checks and independent Keycloak email ownership/credential enrollment review pass.
+The isolated `tests/unit/Sun.Security.GuardedSession.PolicyTests` exercises TestServer POSTs with origin/CSRF rejection and missing, malformed or duplicate browser bearers, requiring denial before opening a database connection. The suite is registered in the main CI workflow. **Not yet verified:** PostgreSQL/TestServer success paths, concurrent rotation, stale-bearer replay, expiry, response-header failures and actual CI execution. The class is intentionally not wired to a public API until those checks and independent Keycloak email ownership/credential enrollment review pass.
 
 This internal milestone must not be interpreted as backend v1 completion or permission to activate unverified accounts.
