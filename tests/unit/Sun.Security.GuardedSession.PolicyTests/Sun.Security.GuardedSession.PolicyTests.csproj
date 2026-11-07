@@ -8,5 +8,6 @@
   <ItemGroup>
     <ProjectReference Include="../../../src/backend/Sun.Security.AspNetCore/Sun.Security.AspNetCore.csproj" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.0" />
   </ItemGroup>
 </Project>
