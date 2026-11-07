@@ -138,6 +138,40 @@ try
             throw new Exception("Stale bearer replay succeeded.");
     }
 
+    // HTTP-level contention: exactly one request may rotate a given bearer.
+    // Each request has its own HttpRequestMessage; the store serializes the
+    // digest transition and audit transaction in PostgreSQL.
+    var contenders = await Task.WhenAll(Enumerable.Range(0, 16)
+        .Select(_ => PostAsync("/rotate", replacement, origin, csrf)));
+    string? winningBearer = null;
+    try
+    {
+        var winners = contenders.Where(r => r.StatusCode == HttpStatusCode.NoContent).ToArray();
+        if (winners.Length != 1 ||
+            contenders.Count(r => r.StatusCode == HttpStatusCode.Forbidden) != 15 ||
+            contenders.Where(r => r.StatusCode == HttpStatusCode.Forbidden)
+                .Any(r => r.Headers.Contains("Set-Cookie")))
+            throw new Exception("Concurrent HTTP rotation allowed replay or disclosed cookies.");
+
+        var winnerCookies = winners[0].Headers.GetValues("Set-Cookie").ToArray();
+        if (winnerCookies.Length != 1 ||
+            !winnerCookies[0].StartsWith(prefix, StringComparison.Ordinal))
+            throw new Exception("Concurrent winner did not receive one replacement cookie.");
+        winningBearer = winnerCookies[0][prefix.Length..].Split(';', 2)[0];
+        if (winningBearer == replacement ||
+            !await sessions.IsLiveAsync(viewer, winningBearer) ||
+            await sessions.IsLiveAsync(viewer, replacement))
+            throw new Exception("Concurrent rotation did not preserve one live bearer.");
+    }
+    finally
+    {
+        foreach (var response in contenders) response.Dispose();
+    }
+
+    // Revoke the sole successful concurrent rotation's bearer.
+    replacement = winningBearer
+        ?? throw new Exception("Concurrent rotation winner was not captured.");
+
     using var revokedResponse = await PostAsync("/revoke", replacement, origin, csrf);
     if (revokedResponse.StatusCode != HttpStatusCode.NoContent ||
         !revokedResponse.Headers.TryGetValues("Set-Cookie", out var deleted) ||
@@ -162,7 +196,7 @@ try
             throw new Exception("Session lifecycle activated or modified the viewer.");
     }
     await app.StopAsync();
-    Console.WriteLine("PASS guarded PostgreSQL/TestServer rotation, replay and revocation");
+    Console.WriteLine("PASS guarded PostgreSQL/TestServer rotation, 16-way HTTP contention, replay and revocation");
     Console.WriteLine("PASS origin/CSRF/duplicate-cookie denial, host-only cookie attributes");
     Console.WriteLine("PASS viewer remains role_assigned; no Keycloak activation");
 }
