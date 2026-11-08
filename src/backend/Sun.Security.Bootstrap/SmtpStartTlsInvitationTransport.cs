@@ -50,8 +50,14 @@ public sealed class SmtpStartTlsInvitationTransport : IViewerInvitationMailTrans
         try
         {
             var recipient = RequireSingleMailbox(recipientEmail);
-            if (string.IsNullOrWhiteSpace(bearerCode))
-                throw new ArgumentException("Missing invitation code.", nameof(bearerCode));
+            // Issuance generates 32 random bytes encoded as unpadded base64url.
+            // Reject caller-supplied controls and arbitrary mail content.
+            if (bearerCode is null || bearerCode.Length != 43 ||
+                bearerCode.Any(c => !((c >= 'A' && c <= 'Z') ||
+                                      (c >= 'a' && c <= 'z') ||
+                                      (c >= '0' && c <= '9') || c is '-' or '_')) ||
+                bearerCode[42] is not ('A' or 'Q' or 'g' or 'w'))
+                throw new ArgumentException("Invalid invitation code format.", nameof(bearerCode));
 
             using var message = new MailMessage(senderEmail, recipient)
             {
