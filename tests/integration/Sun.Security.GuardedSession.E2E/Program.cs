@@ -175,6 +175,18 @@ try
         !cookie.Contains("samesite=strict", StringComparison.OrdinalIgnoreCase) ||
         cookie.Contains("domain=", StringComparison.OrdinalIgnoreCase))
         throw new Exception("Replacement cookie attributes are unsafe.");
+    // Cookie transport may never extend the five-minute PostgreSQL lease.
+    // Compare the issued Max-Age to the remaining original persisted expiry.
+    static void AssertFixedExpiryCookie(string setCookie, DateTime expiresAtUtc)
+    {
+        var maxAgePart = setCookie.Split(';', StringSplitOptions.TrimEntries)
+            .Single(part => part.StartsWith("max-age=", StringComparison.OrdinalIgnoreCase));
+        if (!int.TryParse(maxAgePart["max-age=".Length..], out var seconds) ||
+            seconds < 1 || seconds > 300 ||
+            DateTime.UtcNow.AddSeconds(seconds) > expiresAtUtc.AddSeconds(1))
+            throw new Exception("Browser cookie extended the persisted session expiry.");
+    }
+    AssertFixedExpiryCookie(cookie, initial.ExpiresAtUtc);
     var replacement = cookie[prefix.Length..].Split(';', 2)[0];
     if (replacement == initial.BrowserSecret ||
         !await sessions.IsLiveAsync(viewer, replacement) ||
@@ -207,6 +219,7 @@ try
         if (winnerCookies.Length != 1 ||
             !winnerCookies[0].StartsWith(prefix, StringComparison.Ordinal))
             throw new Exception("Concurrent winner did not receive one replacement cookie.");
+        AssertFixedExpiryCookie(winnerCookies[0], initial.ExpiresAtUtc);
         winningBearer = winnerCookies[0][prefix.Length..].Split(';', 2)[0];
         if (winningBearer == replacement ||
             !await sessions.IsLiveAsync(viewer, winningBearer) ||
