@@ -2,6 +2,7 @@ using System.Net;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.TestHost;
 using Npgsql;
 using Sun.Security.AspNetCore;
@@ -36,8 +37,9 @@ foreach (var operation in new[] { "rotate", "revoke" })
     started.Request.Host = new HostString("enroll.oryva.example");
     started.Request.Headers.Cookie =
         OryvaBrowserSessionCookie.Name + "=" + new string('A', 43);
-    started.Response.Body = new MemoryStream();
-    await started.Response.StartAsync();
+    // DefaultHttpContext has no server transport: StartAsync alone does not
+    // transition HasStarted. Install an explicit already-started feature.
+    started.Features.Set<IHttpResponseFeature>(new StartedResponseFeature());
     if (!started.Response.HasStarted)
         throw new Exception("Test setup failed: response has not started.");
     var allowed = operation == "rotate"
@@ -119,3 +121,17 @@ await app.StopAsync();
 Console.WriteLine("PASS guarded TestServer origin/CSRF, missing/malformed/duplicate bearer denials");
 Console.WriteLine("PASS rejected lifecycle calls cannot reach PostgreSQL or mutate cookies");
 Console.WriteLine("NOTE successful PostgreSQL rotation/revocation, replay and concurrency E2E remain outstanding");
+
+// Models a server transport that has committed response headers. A bare
+// DefaultHttpContext does not do this even after Response.StartAsync().
+sealed class StartedResponseFeature : IHttpResponseFeature
+{
+    public int StatusCode { get; set; } = 200;
+    public string? ReasonPhrase { get; set; }
+    public IHeaderDictionary Headers { get; set; } = new HeaderDictionary();
+    public Stream Body { get; set; } = Stream.Null;
+    public bool HasStarted => true;
+    public void OnStarting(Func<object, Task> callback, object state) =>
+        throw new InvalidOperationException("Response already started.");
+    public void OnCompleted(Func<object, Task> callback, object state) { }
+}
