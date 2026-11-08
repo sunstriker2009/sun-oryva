@@ -24,4 +24,6 @@ PostgreSQL can commit a browser-secret rotation while the HTTP response carrying
 - End-to-end negative cases: expired/replayed proof, changed email or Keycloak subject, disabled/activated identity mismatch, SMTP failure, proxy spoofing, CSRF/origin failures and interrupted transactions.
 - Review recovery observability, rate limits, log redaction, audit retention, incident response and browser UX without creating an account-enumeration oracle.
 
+A guarded PostgreSQL/TestServer regression now models the post-commit lost-response condition by withholding the replacement cookie from the simulated browser and replaying its original bearer. It asserts HTTP 403, no replacement Set-Cookie, and a dead original bearer. This is a simulated delivery failure, not a network fault-injection test; independent proof, atomic reissue, and recovery remain unimplemented. CI verification for this change is pending.
+
 This is not a promise of transparent recovery. A user may need a new verified invitation after a lost response. Until the independent proof ceremony is complete, backend v1 is **not** ready for public enrollment.
