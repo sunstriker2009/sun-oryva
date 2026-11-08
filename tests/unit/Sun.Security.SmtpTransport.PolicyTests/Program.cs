@@ -15,7 +15,7 @@ static void RejectConfiguration(Action action)
 }
 
 const string password = "ci-secret-not-for-delivery";
-const string token = "ci-sensitive-invitation-bearer";
+const string token = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 SmtpStartTlsInvitationTransport Make(int port) =>
     new("127.0.0.1", port, "ci-user", password, "oryva@example.invalid");
 
@@ -44,6 +44,27 @@ catch (ViewerInvitationTransportException ex)
     if (ex.InnerException is not null || ex.ToString().Contains(token, StringComparison.Ordinal))
         throw new Exception("SMTP validation failure exposed invitation details.");
 }
+foreach (var malformed in new[] {
+    "ci-sensitive-invitation-bearer",
+    token + "\\r\\nBcc: attacker@example.invalid",
+    token[..42] + "=",
+    token[..42] + "+",
+    token[..42] + "B"
+})
+{
+    try
+    {
+        await Make(587).SendAsync("viewer@example.invalid", malformed, default);
+        throw new Exception("Malformed invitation bearer was accepted.");
+    }
+    catch (ViewerInvitationTransportException ex)
+    {
+        if (ex.InnerException is not null || ex.ToString().Contains(malformed, StringComparison.Ordinal))
+            throw new Exception("Malformed bearer failure leaked sensitive content.");
+    }
+}
+Console.WriteLine("PASS malformed invitation bearers are rejected before SMTP");
+
 Console.WriteLine("PASS SMTP configuration, single-recipient gate and redacted failures");
 
 await AssertSmtpFailureAsync(advertiseStartTls: false);
