@@ -125,7 +125,7 @@ public sealed class ViewerInvitationChallengeStore(NpgsqlDataSource dataSource)
         await using (var revoke = new NpgsqlCommand("""
             WITH revoked AS (
                 UPDATE oryva.viewer_invitation_challenges
-                SET revoked_at = now()
+                SET revoked_at = clock_timestamp()
                 WHERE viewer_id = @viewer AND consumed_at IS NULL AND revoked_at IS NULL
                 RETURNING id
             )

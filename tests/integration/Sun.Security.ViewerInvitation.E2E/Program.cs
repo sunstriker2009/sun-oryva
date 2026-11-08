@@ -754,6 +754,37 @@ try
     if (await CountAuditAsync(concurrent.Id, "consumed") != 1)
         throw new Exception("Concurrent consumption created duplicate or missing audit events.");
 
+    // Multiple authorized issuers racing to reissue for one viewer must leave
+    // exactly one redeemable challenge. The viewer row lock serializes both
+    // revocation audit and new issuance across independent store calls.
+    var reissues = await Task.WhenAll(
+        Enumerable.Range(0, 12).Select(i => store.IssueAsync(
+            viewer, i % 2 == 0 ? "ci-master" : "ci-admin",
+            i % 2 == 0 ? "master" : "admin")));
+    await using (var connection = await source.OpenConnectionAsync())
+    await using (var count = new NpgsqlCommand("""
+        SELECT count(*) FROM oryva.viewer_invitation_challenges
+        WHERE viewer_id = @viewer AND consumed_at IS NULL AND revoked_at IS NULL;
+        """, connection))
+    {
+        count.Parameters.AddWithValue("viewer", viewer);
+        if (Convert.ToInt32(await count.ExecuteScalarAsync()) != 1)
+            throw new Exception("Concurrent reissue left multiple outstanding challenges.");
+    }
+    var reissueWinners = await Task.WhenAll(
+        reissues.Select(x => store.ConsumeAsync(viewer, x.Token)));
+    if (reissueWinners.Count(x => x) != 1 ||
+        await store.ConsumeAsync(viewer, reissues[Array.FindIndex(reissueWinners, x => x)].Token))
+        throw new Exception("Concurrent reissue allowed replay or multiple valid bearers.");
+    foreach (var item in reissues)
+    {
+        if (await CountAuditAsync(item.Id, "issued") != 1 ||
+            await CountAuditAsync(item.Id, "revoked") +
+            await CountAuditAsync(item.Id, "consumed") != 1)
+            throw new Exception("Concurrent reissue lost or duplicated its terminal audit.");
+    }
+    Console.WriteLine("PASS concurrent authorized reissue serializes, audits and preserves one bearer");
+
     // Force an audit uniqueness failure and verify the token remains unconsumed:
     // the state mutation and audit insert must be one database transaction.
     var rollback = await store.IssueAsync(viewer, "ci-master", "master");
