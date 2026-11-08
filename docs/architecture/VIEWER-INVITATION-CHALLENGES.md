@@ -176,3 +176,7 @@ reviewed TLS/authenticated SMTP implementation, secrets management, bounded
 scheduling, monitoring, abuse quotas, and the browser ownership ceremony.
 
 **Verification:** [PR #92](https://github.com/sunstriker2009/sun-oryva/pull/92) was squash-merged as `3b831ad9` after all four applicable PR workflows passed on final head `71d728f3`, including real PostgreSQL/Mailpit E2E. Post-merge main CI is not independently verified. No production delivery or enrollment was enabled.
+
+## Concurrent issuer regression (pending CI)
+
+The PostgreSQL invitation E2E now races twelve independently authorized master/admin reissues for one viewer, checks that exactly one unconsumed and unrevoked challenge remains, then races redemption of all twelve bearers. Exactly one redemption must succeed; each issuance must have one issuance audit and exactly one terminal revocation or consumption audit. This validates database serialization, not independent email ownership, Keycloak credential enrollment, or public recovery. The regression is **unverified until the PR-head CI passes**.
