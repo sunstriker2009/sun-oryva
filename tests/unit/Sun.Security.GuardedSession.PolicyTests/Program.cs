@@ -26,6 +26,27 @@ if (await lifecycle.RotateAsync(unguarded, Guid.NewGuid()) ||
     unguarded.Response.Headers.ContainsKey("Set-Cookie"))
     throw new Exception("Unguarded request reached session mutation or changed cookies.");
 
+// Once response headers have started, a valid-looking bearer must not
+// trigger a database mutation or attempt to issue/clear cookies.
+foreach (var operation in new[] { "rotate", "revoke" })
+{
+    var started = new DefaultHttpContext();
+    started.Request.Method = HttpMethods.Post;
+    started.Request.Scheme = "https";
+    started.Request.Host = new HostString("enroll.oryva.example");
+    started.Request.Headers.Cookie =
+        OryvaBrowserSessionCookie.Name + "=" + new string('A', 43);
+    started.Response.Body = new MemoryStream();
+    await started.Response.StartAsync();
+    if (!started.Response.HasStarted)
+        throw new Exception("Test setup failed: response has not started.");
+    var allowed = operation == "rotate"
+        ? await lifecycle.RotateAsync(started, Guid.NewGuid())
+        : await lifecycle.RevokeAsync(started, Guid.NewGuid());
+    if (allowed || started.Response.Headers.ContainsKey("Set-Cookie"))
+        throw new Exception("Started response must fail closed: " + operation);
+}
+
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
     EnvironmentName = "Development"
