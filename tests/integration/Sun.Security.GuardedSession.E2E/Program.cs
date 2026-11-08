@@ -187,6 +187,16 @@ try
             throw new Exception("Browser cookie extended the persisted session expiry.");
     }
     AssertFixedExpiryCookie(cookie, initial.ExpiresAtUtc);
+    // Model a transport failure after PostgreSQL commits: the server has
+    // generated Set-Cookie, but the browser never receives that replacement.
+    // The original cookie must not recover the committed session.
+    using (var lostResponseReplay = await PostAsync("/rotate", initial.BrowserSecret, origin, csrf))
+    {
+        if (lostResponseReplay.StatusCode != HttpStatusCode.Forbidden ||
+            lostResponseReplay.Headers.Contains("Set-Cookie") ||
+            await sessions.IsLiveAsync(viewer, initial.BrowserSecret))
+            throw new Exception("Lost rotation response permitted stale-cookie recovery.");
+    }
     var replacement = cookie[prefix.Length..].Split(';', 2)[0];
     if (replacement == initial.BrowserSecret ||
         !await sessions.IsLiveAsync(viewer, replacement) ||
