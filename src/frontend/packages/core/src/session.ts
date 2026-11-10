@@ -56,7 +56,7 @@ export function getOryvaSessionNavigation(session: OryvaSessionView) {
 export function safeOryvaReturnPath(value: unknown, fallback = "/"): string {
   if (typeof value !== "string" || !value.startsWith("/") ||
       value.startsWith("//") || value.includes("\\") ||
-      /[\\u0000-\\u001f\\u007f]/.test(value) ||
+      /[\u0000-\u001f\u007f]/.test(value) ||
       /%(?:2f|5c|0[0-9a-f]|1[0-9a-f]|7f)/i.test(value))
     return fallback;
   try {
