@@ -4,7 +4,7 @@
  */
 function httpsUrl(value, allowLoopbackHttp) {
   if (typeof value !== "string" || value.trim() !== value ||
-      /[\\u0000-\\u001f\\u007f\\\\]/.test(value)) throw new Error("Invalid OIDC URL");
+      /[\u0000-\u001f\u007f\\]/.test(value)) throw new Error("Invalid OIDC URL");
   let url;
   try { url = new URL(value); } catch { throw new Error("Invalid OIDC URL"); }
   const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
