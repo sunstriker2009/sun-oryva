@@ -13,7 +13,7 @@ export interface OryvaOidcPublicConfig {
 
 function normalizedHttpsUrl(value: unknown, allowLoopbackHttp: boolean): URL {
   if (typeof value !== "string" || value.trim() !== value ||
-      value.length > 2048 || /[\\u0000-\\u001f\\u007f\\\\]/.test(value))
+      value.length > 2048 || /[\u0000-\u001f\u007f\\]/.test(value))
     throw new Error("Invalid OIDC URL");
   let url: URL;
   try { url = new URL(value); }
@@ -24,7 +24,7 @@ function normalizedHttpsUrl(value: unknown, allowLoopbackHttp: boolean): URL {
       !(allowLoopbackHttp && url.protocol === "http:" && loopback))
     throw new Error("OIDC URL requires HTTPS");
   if (url.username || url.password || url.hash || !url.hostname ||
-      (url.port && !/^\\d+$/.test(url.port)))
+      (url.port && !/^\d+$/.test(url.port)))
     throw new Error("OIDC URL has forbidden components");
   return url;
 }
