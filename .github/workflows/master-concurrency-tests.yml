@@ -33,10 +33,8 @@ jobs:
           python-version: "3.13"
       - name: Install test dependencies
         run: pip install "psycopg[binary]>=3.2,<4"
-      - name: Install PostgreSQL client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - name: Initialize schema
-        run: psql -h localhost -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f infrastructure/postgres/001_master_bootstrap.sql
+        run: docker run --rm --network host -e PGPASSWORD=ci_only -v "$PWD:/work:ro" postgres:17-alpine psql -h 127.0.0.1 -U postgres -d oryva_test -v ON_ERROR_STOP=1 -f /work/infrastructure/postgres/001_master_bootstrap.sql
       - name: Run concurrency and recovery tests
         run: |
           python -m unittest discover -s tests/integration -p "master_reservation_*.py" -v
