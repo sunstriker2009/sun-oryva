@@ -34,11 +34,9 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
-      - name: Install PostgreSQL client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - name: Initialize PostgreSQL schema
         run: |
-          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/001_master_bootstrap.sql
+          docker run --rm --network host -e PGPASSWORD=ci_only -v "$PWD:/work:ro" postgres:17-alpine psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f /work/infrastructure/postgres/001_master_bootstrap.sql
       - name: Start isolated SMTP sink
         run: |
           docker network create oryva-e2e-net
@@ -90,70 +88,70 @@ jobs:
         run: python tests/integration/setup_keycloak_e2e.py
       - name: Initialize admin provisioning schema before authorization E2E
         run: |
-          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/002_admin_provisioning.sql
+          docker run --rm --network host -e PGPASSWORD=ci_only -v "$PWD:/work:ro" postgres:17-alpine psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f /work/infrastructure/postgres/002_admin_provisioning.sql
       - name: Initialize append-only admin audit schema
         run: |
-          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/003_admin_provisioning_audit.sql
+          docker run --rm --network host -e PGPASSWORD=ci_only -v "$PWD:/work:ro" postgres:17-alpine psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f /work/infrastructure/postgres/003_admin_provisioning_audit.sql
       - name: Initialize admin role assignment schema
         run: |
-          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/004_admin_role_assignment.sql
+          docker run --rm --network host -e PGPASSWORD=ci_only -v "$PWD:/work:ro" postgres:17-alpine psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f /work/infrastructure/postgres/004_admin_role_assignment.sql
       - name: Initialize admin activation schema
         run: |
-          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/005_admin_activation.sql
+          docker run --rm --network host -e PGPASSWORD=ci_only -v "$PWD:/work:ro" postgres:17-alpine psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f /work/infrastructure/postgres/005_admin_activation.sql
       - name: Initialize admin deactivation schema
         run: |
-          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/006_admin_deactivation.sql
+          docker run --rm --network host -e PGPASSWORD=ci_only -v "$PWD:/work:ro" postgres:17-alpine psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f /work/infrastructure/postgres/006_admin_deactivation.sql
       - name: Initialize viewer authorization schema
         run: |
-          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/007_viewer_authorization.sql
+          docker run --rm --network host -e PGPASSWORD=ci_only -v "$PWD:/work:ro" postgres:17-alpine psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f /work/infrastructure/postgres/007_viewer_authorization.sql
       - name: Initialize viewer role assignment and audit schema
         run: |
-          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/008_viewer_role_assignment.sql
+          docker run --rm --network host -e PGPASSWORD=ci_only -v "$PWD:/work:ro" postgres:17-alpine psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f /work/infrastructure/postgres/008_viewer_role_assignment.sql
       - name: Initialize guarded viewer activation schema
         run: |
-          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/009_viewer_activation.sql
+          docker run --rm --network host -e PGPASSWORD=ci_only -v "$PWD:/work:ro" postgres:17-alpine psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f /work/infrastructure/postgres/009_viewer_activation.sql
       - name: Initialize database-first viewer deactivation schema
         run: |
-          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/010_viewer_deactivation.sql
+          docker run --rm --network host -e PGPASSWORD=ci_only -v "$PWD:/work:ro" postgres:17-alpine psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f /work/infrastructure/postgres/010_viewer_deactivation.sql
       - name: Initialize atomic viewer reservation audit schema
         run: |
-          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/011_viewer_reservation_audit.sql
+          docker run --rm --network host -e PGPASSWORD=ci_only -v "$PWD:/work:ro" postgres:17-alpine psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f /work/infrastructure/postgres/011_viewer_reservation_audit.sql
       - name: Initialize atomic viewer preparation audit schema
         run: |
-          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/012_viewer_preparation_audit.sql
+          docker run --rm --network host -e PGPASSWORD=ci_only -v "$PWD:/work:ro" postgres:17-alpine psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f /work/infrastructure/postgres/012_viewer_preparation_audit.sql
       - name: Initialize cross-replica management quota schema
         run: |
-          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/013_management_write_quotas.sql
+          docker run --rm --network host -e PGPASSWORD=ci_only -v "$PWD:/work:ro" postgres:17-alpine psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f /work/infrastructure/postgres/013_management_write_quotas.sql
       - name: Initialize one-time viewer invitation challenge schema
         run: |
-          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/014_viewer_invitation_challenges.sql
+          docker run --rm --network host -e PGPASSWORD=ci_only -v "$PWD:/work:ro" postgres:17-alpine psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f /work/infrastructure/postgres/014_viewer_invitation_challenges.sql
       - name: Initialize append-only invitation event audit schema
         run: |
-          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/015_viewer_invitation_audit.sql
+          docker run --rm --network host -e PGPASSWORD=ci_only -v "$PWD:/work:ro" postgres:17-alpine psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f /work/infrastructure/postgres/015_viewer_invitation_audit.sql
       - name: Initialize invitation subject snapshot migration
         run: |
-          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/016_viewer_invitation_subject_binding.sql
+          docker run --rm --network host -e PGPASSWORD=ci_only -v "$PWD:/work:ro" postgres:17-alpine psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f /work/infrastructure/postgres/016_viewer_invitation_subject_binding.sql
       - name: Initialize encrypted invitation outbox schema
         run: |
-          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/017_viewer_invitation_encrypted_outbox.sql
+          docker run --rm --network host -e PGPASSWORD=ci_only -v "$PWD:/work:ro" postgres:17-alpine psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f /work/infrastructure/postgres/017_viewer_invitation_encrypted_outbox.sql
       - name: Initialize fenced invitation outbox claims
         run: |
-          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/018_viewer_invitation_outbox_leases.sql
+          docker run --rm --network host -e PGPASSWORD=ci_only -v "$PWD:/work:ro" postgres:17-alpine psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f /work/infrastructure/postgres/018_viewer_invitation_outbox_leases.sql
       - name: Initialize transactional invitation SMTP handoff schema
         run: |
-          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/019_viewer_invitation_smtp_handoff.sql
+          docker run --rm --network host -e PGPASSWORD=ci_only -v "$PWD:/work:ro" postgres:17-alpine psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f /work/infrastructure/postgres/019_viewer_invitation_smtp_handoff.sql
       - name: Initialize internal browser exchange schema
         run: |
-          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/020_viewer_invitation_browser_exchange.sql
+          docker run --rm --network host -e PGPASSWORD=ci_only -v "$PWD:/work:ro" postgres:17-alpine psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f /work/infrastructure/postgres/020_viewer_invitation_browser_exchange.sql
       - name: Initialize cross-replica browser exchange quota schema
         run: |
-          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/021_viewer_invitation_exchange_quotas.sql
+          docker run --rm --network host -e PGPASSWORD=ci_only -v "$PWD:/work:ro" postgres:17-alpine psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f /work/infrastructure/postgres/021_viewer_invitation_exchange_quotas.sql
       - name: Initialize cross-replica browser admission quotas
         run: |
-          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/022_browser_admission_quotas.sql
+          docker run --rm --network host -e PGPASSWORD=ci_only -v "$PWD:/work:ro" postgres:17-alpine psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f /work/infrastructure/postgres/022_browser_admission_quotas.sql
       - name: Initialize append-only browser session lifecycle audit
         run: |
-          PGPASSWORD=ci_only psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f infrastructure/postgres/023_browser_session_lifecycle_audit.sql
+          docker run --rm --network host -e PGPASSWORD=ci_only -v "$PWD:/work:ro" postgres:17-alpine psql -h 127.0.0.1 -U postgres -d oryva_e2e -v ON_ERROR_STOP=1 -f /work/infrastructure/postgres/023_browser_session_lifecycle_audit.sql
       - name: Run isolated browser admission PostgreSQL and HTTP E2E
         run: dotnet run --project tests/integration/Sun.Security.BrowserAdmission.E2E/Sun.Security.BrowserAdmission.E2E.csproj -c Release
       - name: Run isolated invitation-to-browser exchange PostgreSQL security E2E
