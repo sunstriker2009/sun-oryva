@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/brand/oryva-sunrise-panorama.svg" alt="ORYVA by Sun — panoramic sunrise over mountain peaks. Identity. Trust. Protection." width="100%">
+  <img src="assets/brand/oryva-logo-readme.svg" alt="ORYVA by Sun — sunrise arc and mountain logo. Identity. Trust. Protection." width="100%">
 </p>
 
 # ORYVA by Sun
