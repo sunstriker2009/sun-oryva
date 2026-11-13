@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/brand/oryva-sunrise-panorama.svg" alt="ORYVA by Sun — panoramic sunrise over mountain peaks. Identity. Trust. Protection." width="100%">
+</p>
+
 # ORYVA by Sun
 
 **SUN-001 · Identity. Trust. Protection.**
@@ -12,6 +16,10 @@ ORYVA is an independently deployable identity and security platform with reusabl
 - Strict Keycloak JWT validation, realm master-role mapping, and database-backed active-master authorization.
 - ASP.NET Core API with anonymous liveness and protected `/api/master/session`.
 - CI integration tests against Keycloak and PostgreSQL, including real signed JWT requests.
+
+## Brand
+- [Brand guide](docs/brand/BRAND-GUIDE.md)
+- [Brand assets](assets/brand/)
 
 ## Documentation
 - [Architecture overview](docs/architecture/OVERVIEW.md)
