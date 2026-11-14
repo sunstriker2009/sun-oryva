@@ -12,7 +12,7 @@
 ## Outstanding
 - Transparent canonical symbol; no verified layered source currently exists.
 - v2 compact SVG symbol, lockups, monochrome/light variants.
-- Optical app icons and PNG exports.
+- Nine PNG icon exports have been uploaded and moved to `branding/assets/icons/`; small-size optical QA and symbol approval remain pending.
 - Final palette, typography and small-size accessibility validation.
 
 Do not restore the retired mountain artwork as a substitute for the v2 symbol. A later PR should deliver approved derivative assets and update this checklist.
