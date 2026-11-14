@@ -19,7 +19,7 @@ export function createOidcTransactionStore(db, hmacKey) {
     async issue({ state, browserBinding, sealedPayload, now = new Date() }) {
       if (!opaque(state) || !opaque(browserBinding) ||
           typeof sealedPayload !== "string" || sealedPayload.length < 32 ||
-          sealedPayload.length > 16384 || !Buffer.isBuffer(Buffer.from(sealedPayload, "base64")) ||
+          sealedPayload.length > 16384 || !/^[A-Za-z0-9+/]+={0,2}$/.test(sealedPayload) ||
           !(now instanceof Date) || !Number.isFinite(now.getTime())) throw invalid();
       const stateHash = digest(state);
       const bindingHash = keyed(hmacKey, browserBinding);
