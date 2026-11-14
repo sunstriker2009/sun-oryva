@@ -41,15 +41,15 @@ export function readOidcRuntimeConfig(env = process.env) {
   if (!["postgres:", "postgresql:"].includes(database.protocol) ||
       !database.hostname || !database.pathname || database.pathname === "/" ||
       database.hash || database.searchParams.has("sslmode") &&
-        !["verify-full", "require"].includes(database.searchParams.get("sslmode"))) throw fail();
+        !["verify-full"].includes(database.searchParams.get("sslmode"))) throw fail();
   if (env.NODE_ENV === "production" &&
-      !["verify-full", "require"].includes(database.searchParams.get("sslmode")))
+      !["verify-full"].includes(database.searchParams.get("sslmode")))
     throw fail();
   const encryptionKey = key(env.ORYVA_OIDC_PAYLOAD_KEY);
   const bindingHmacKey = key(env.ORYVA_OIDC_BINDING_HMAC_KEY);
   if (encryptionKey.equals(bindingHmacKey)) throw fail();
   return Object.freeze({
-    issuer: issuer.toString().replace(/\\/$/, ""),
+    issuer: issuer.toString().replace(/\/$/, ""),
     clientId, redirectUri: redirect.toString(), consoleOrigin: origin.origin,
     databaseConnectionString, encryptionKey, bindingHmacKey, allowLoopbackHttp,
   });
