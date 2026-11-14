@@ -3,8 +3,6 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 const AAD = Buffer.from("ORYVA:OIDC:TRANSACTION:v1", "utf8");
 const fail = () => new Error("OIDC transaction payload unavailable");
 const opaque = value => typeof value === "string" && /^[A-Za-z0-9_-]{43,128}$/.test(value);
-const canonical = value => typeof value === "string" && /^[A-Za-z0-9_-]+$/.test(value) &&
-  Buffer.from(value, "base64url").toString("base64url") === value;
 
 /**
  * AES-256-GCM authenticated encryption of server-side OIDC transaction secrets.
