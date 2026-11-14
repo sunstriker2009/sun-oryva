@@ -23,12 +23,17 @@ export function buildOidcAuthorizationUrl(config, metadata, transaction) {
   if (url.protocol !== "https:" && url.hostname !== "localhost" &&
       url.hostname !== "127.0.0.1" && url.hostname !== "[::1]")
     throw new Error("Insecure authorization endpoint");
-  if (url.search || url.hash) throw new Error("Unexpected authorization endpoint parameters");
+  if (url.search || url.hash || url.username || url.password)
+    throw new Error("Unexpected authorization endpoint parameters");
   for (const key of ["verifier", "challenge", "state", "nonce"]) {
     if (typeof transaction[key] !== "string" ||
         !/^[A-Za-z0-9_-]{43,128}$/.test(transaction[key]))
       throw new Error("Invalid PKCE transaction");
   }
+  const expectedChallenge = base64url(createHash("sha256")
+    .update(transaction.verifier, "ascii").digest());
+  if (transaction.challenge !== expectedChallenge)
+    throw new Error("Invalid PKCE challenge");
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", config.clientId);
   url.searchParams.set("redirect_uri", config.redirectUri);
