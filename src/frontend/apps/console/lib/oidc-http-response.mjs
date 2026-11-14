@@ -62,7 +62,8 @@ export function oidcAuthorizationResponse(authorizationUrl, bindingCookie, allow
   } catch { throw fail(); }
   if (target.origin !== endpoint.origin || target.pathname !== endpoint.pathname ||
       endpoint.search || endpoint.hash || target.hash ||
-      !["https:", "http:"].includes(target.protocol) ||
+      (target.protocol !== "https:" && !(target.protocol === "http:" &&
+        ["localhost", "127.0.0.1", "[::1]"].includes(target.hostname))) ||
       target.searchParams.get("response_type") !== "code" ||
       target.searchParams.get("code_challenge_method") !== "S256" ||
       target.searchParams.getAll("state").length !== 1 ||
