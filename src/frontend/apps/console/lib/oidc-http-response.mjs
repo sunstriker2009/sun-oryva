@@ -60,11 +60,14 @@ export function oidcAuthorizationResponse(authorizationUrl, bindingCookie, allow
     target = new URL(authorizationUrl);
     endpoint = new URL(allowedEndpoint);
   } catch { throw fail(); }
-  if (target.origin !== endpoint.origin || target.pathname !== endpoint.pathname ||
+  if (target.username || target.password || endpoint.username || endpoint.password ||
+      target.origin !== endpoint.origin || target.pathname !== endpoint.pathname ||
       endpoint.search || endpoint.hash || target.hash ||
       (target.protocol !== "https:" && !(target.protocol === "http:" &&
         ["localhost", "127.0.0.1", "[::1]"].includes(target.hostname))) ||
+      target.searchParams.getAll("response_type").length !== 1 ||
       target.searchParams.get("response_type") !== "code" ||
+      target.searchParams.getAll("code_challenge_method").length !== 1 ||
       target.searchParams.get("code_challenge_method") !== "S256" ||
       target.searchParams.getAll("state").length !== 1 ||
       target.searchParams.getAll("nonce").length !== 1) throw fail();
