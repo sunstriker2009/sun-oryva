@@ -12,7 +12,7 @@ export function createOidcBindingCookie({ secure = true } = {}) {
     name: OIDC_BINDING_COOKIE,
     value,
     options: Object.freeze({
-      httpOnly: true, secure: true, sameSite: "strict",
+      httpOnly: true, secure: true, sameSite: "lax",
       path: "/", maxAge: OIDC_BINDING_MAX_AGE,
     }),
   });
@@ -35,7 +35,7 @@ export function clearOidcBindingCookie() {
     name: OIDC_BINDING_COOKIE,
     value: "",
     options: Object.freeze({
-      httpOnly: true, secure: true, sameSite: "strict",
+      httpOnly: true, secure: true, sameSite: "lax",
       path: "/", maxAge: 0,
     }),
   });
