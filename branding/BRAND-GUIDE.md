@@ -1,29 +1,36 @@
-# ORYVA by Sun — Brand Guide (v2 transition)
+# ORYVA by Sun — Brand Guide
 
 **Product:** SUN-001  
-**Tagline:** Identity. Trust. Protection.  
-**Visual direction:** Owner-approved Solar Coral Orbit.
+**Approved visual identity:** Solar Coral Orbit (v2)  
+**Tagline:** Identity. Trust. Protection.
 
-## Approved direction
-The luminous orbital ring forms the letter **O** and carries the SUN family sunrise arc and four-point star. The approved banner uses aubergine, solar coral, magenta, warm gold and ivory. The previous mountain/sunrise artwork is superseded. Do not introduce mountains, shields, keyholes, padlocks or fingerprints into the primary mark.
+## Identity and approval
+The owner approved the Solar Coral Orbit concept. A luminous orbital ring forms the letter **O**, with a SUN-family sunrise flare and four-point star. The palette is aubergine, coral/magenta, warm solar gold and ivory. The previous mountain/sunrise identity is retired. Do not introduce mountains, shields, padlocks, keyholes or fingerprint symbols into the primary mark.
 
-## Current production banner
-- [Approved raster README banner](assets/readme-banner-v2.png) — uploaded high-resolution PNG; used directly by the repository README.
-- The approved image must not be independently regenerated or redrawn and represented as the original.
-- The original source provenance should be verified before an archival copy is declared byte-identical.
+The approved high-resolution image is the visual source of truth. Vector lockups and symbols must be intentionally designed, reviewed adaptations—not claimed as pixel-identical extractions.
 
-## Transitional legacy assets
-- [Former SVG README panorama](assets/readme-banner-v1.svg) — superseded and no longer used by README.
-- [Legacy dark lockup](assets/lockup-dark.svg) — older mountain-era vector adaptation; **not a v2-compliant lockup**.
-- [Legacy app icon](assets/icons/app-icon.svg) — older mountain-era vector adaptation; **not a v2-compliant app icon**.
-- The existing archive retains previous concept treatments and migration notes.
+## Active asset
+| Path | Role |
+|---|---|
+| `branding/assets/readme-banner-v2.png` | Approved high-resolution raster README banner |
 
-## Remaining v2 production work
-- Preserve an exact original under `branding/archive/originals/readme-banner-v2.png` after verifying the source.
-- Establish exact color tokens from approved artwork and accessibility usage.
-- Extract a genuinely transparent standalone ring source where possible; a crop of the flattened banner is not a transparent master.
-- Design owner-reviewed `symbol-dark.svg`, `symbol-light.svg`, `symbol-mono.svg`, `symbol-small.svg`, `lockup-dark.svg`, `lockup-light.svg` and raster icon exports, all visually consistent with v2.
-- Validate mobile README legibility and icon readability at 16–32 px.
-- Retire old production assets and update references in a dedicated completion PR.
+The exact same Git blob is preserved at `branding/archive/originals/readme-banner-v2.png`. This is an exact byte-for-byte archival copy of the committed approved banner, **not** a claim that a layered/transparent source exists.
+
+## Retired legacy assets
+The former mountain-era SVGs are archived at:
+- `branding/archive/retired/readme-banner-v1.svg`
+- `branding/archive/retired/lockup-dark.svg`
+- `branding/archive/retired/app-icon.svg`
+
+The earlier alternative panorama remains in `branding/archive/intermediate/`. The old banner also has a historical copy in `branding/archive/originals/readme-banner-v1.svg`; that file is an SVG adaptation, not the original raster concept.
+
+**Do not use retired SVGs in new production UI.** The v2 SVG symbol and lockups have not yet been approved or committed.
+
+## Pending production derivatives
+- Establish a transparent canonical ring symbol from a genuine source or separately approved artwork. A crop of the flattened banner is not a transparent source.
+- Design `symbol-dark.svg`, `symbol-light.svg`, `symbol-mono.svg`, `symbol-small.svg` and `lockup-dark.svg`, `lockup-light.svg`, `lockup-mono.svg` as v2 adaptations.
+- Export and validate 16, 24, 32, 48, 64, 128, 256, 512 and 1024 px PNG icons.
+- Document approved exact color tokens, typography, contrast and minimum sizes after derivative visual review.
+- Validate README legibility on GitHub mobile and desktop.
 
 See [SUN Product Branding Standard](https://github.com/sunstriker2009/sun-ecosystem/blob/main/docs/governance/PRODUCT-BRANDING.md).
