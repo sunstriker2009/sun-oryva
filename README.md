@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="branding/assets/readme-banner-v1.svg" alt="ORYVA by Sun — sunrise arc and mountain logo. Identity. Trust. Protection." width="100%">
+  <img src="branding/assets/readme-banner-v2.png" alt="ORYVA by Sun — Solar Coral Orbit ring logo. Identity. Trust. Protection." width="100%">
 </p>
 
 # ORYVA by Sun
