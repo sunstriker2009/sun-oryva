@@ -24,7 +24,7 @@ The former mountain-era SVGs are archived at:
 
 The earlier alternative panorama remains in `branding/archive/intermediate/`. The old banner also has a historical copy in `branding/archive/originals/readme-banner-v1.svg`; that file is an SVG adaptation, not the original raster concept.
 
-**Do not use retired SVGs in new production UI.** The v2 SVG symbol and lockups have not yet been approved or committed.
+**Do not use retired SVGs in new production UI.** New v2 SVG adaptations have been proposed in a separate review PR; they are not yet owner-approved.
 
 
 ## Uploaded PNG icon exports (v2 symbol proposal)
@@ -53,3 +53,27 @@ These are the uploaded *symbol-proposal* PNG exports, distinct from the already 
 - Validate README legibility on GitHub mobile and desktop.
 
 See [SUN Product Branding Standard](https://github.com/sunstriker2009/sun-ecosystem/blob/main/docs/governance/PRODUCT-BRANDING.md).
+
+## Proposed compact SVG variants (pending visual approval)
+
+| Asset | Intended use |
+|---|---|
+| [symbol-dark.svg](assets/symbol-dark.svg) | Color orbit on dark UI |
+| [symbol-light.svg](assets/symbol-light.svg) | Color orbit on light UI |
+| [symbol-mono.svg](assets/symbol-mono.svg) | Single-color fallback on dark UI |
+| [symbol-small.svg](assets/symbol-small.svg) | Reduced-detail small mark |
+| [lockup-dark.svg](assets/lockup-dark.svg) | Wordmark on dark UI |
+| [lockup-light.svg](assets/lockup-light.svg) | Wordmark on light UI |
+| [lockup-mono.svg](assets/lockup-mono.svg) | Single-color wordmark |
+
+These are newly constructed **vector interpretations**, not tracings or exports from the original raster layers. The lockup uses generic system typography; it is not a pixel-faithful recreation of the approved banner wordmark. All require owner review before use in product interfaces. The existing README PNG and nine PNG icons are unchanged.
+
+### Vector color tokens (provisional)
+- Solar gold: `#FFD66C`
+- Warm coral: `#FF8A42`
+- Orbit pink: `#EE477E`
+- Orchid: `#A43A9C`
+- Aubergine: `#241525`
+- Warm ivory: `#FFF6EE`
+
+These are manually selected working values, not sampled or certified values from a layered master. Check contrast against actual UI backgrounds before production.
