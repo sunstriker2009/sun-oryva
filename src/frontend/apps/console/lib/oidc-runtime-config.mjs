@@ -61,8 +61,7 @@ export async function loadOidcRuntimeConfig(env = process.env, options = {}) {
     const metadata = await discoverOidcMetadata(config.issuer, {
       fetcher: options.fetcher, allowLoopbackHttp: config.allowLoopbackHttp,
     });
-    // The verifier currently supports RS256 only. Fail if discovery does not
-    // advertise RS256 instead of silently selecting an unsupported algorithm.
+    // Discovery validation requires RS256, matching the pinned token verifier.
     if (!metadata || typeof metadata.jwksUri !== "string") throw fail();
     return Object.freeze({ config, metadata });
   } catch { throw fail(); }
