@@ -70,7 +70,16 @@ export function oidcAuthorizationResponse(authorizationUrl, bindingCookie, allow
       target.searchParams.getAll("code_challenge_method").length !== 1 ||
       target.searchParams.get("code_challenge_method") !== "S256" ||
       target.searchParams.getAll("state").length !== 1 ||
-      target.searchParams.getAll("nonce").length !== 1) throw fail();
+      target.searchParams.getAll("nonce").length !== 1 ||
+      !/^[A-Za-z0-9_-]{43,128}$/.test(target.searchParams.get("nonce") ?? "") ||
+      !/^[A-Za-z0-9_-]{43,128}$/.test(target.searchParams.get("state") ?? "") ||
+      target.searchParams.getAll("client_id").length !== 1 ||
+      !/^[A-Za-z0-9._-]{1,128}$/.test(target.searchParams.get("client_id") ?? "") ||
+      target.searchParams.getAll("redirect_uri").length !== 1 ||
+      target.searchParams.getAll("scope").length !== 1 ||
+      !target.searchParams.get("scope")?.split(" ").includes("openid") ||
+      target.searchParams.getAll("code_challenge").length !== 1 ||
+      !/^[A-Za-z0-9_-]{43}$/.test(target.searchParams.get("code_challenge") ?? "")) throw fail();
   const h = new Headers(headers);
   h.set("location", target.toString());
   h.append("set-cookie", serializeOidcCookie(bindingCookie));
