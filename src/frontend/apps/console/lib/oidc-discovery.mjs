@@ -27,8 +27,7 @@ export function validateOidcMetadata(metadata, expectedIssuer, options = {}) {
       !metadata.response_types_supported.includes("code"))
     throw new Error("OIDC code response unsupported");
   if (!Array.isArray(metadata.id_token_signing_alg_values_supported) ||
-      !metadata.id_token_signing_alg_values_supported.some(x =>
-        typeof x === "string" && ["RS256", "PS256", "ES256"].includes(x)))
+      !metadata.id_token_signing_alg_values_supported.includes("RS256"))
     throw new Error("OIDC signing algorithm unsupported");
   if (metadata.code_challenge_methods_supported !== undefined &&
       (!Array.isArray(metadata.code_challenge_methods_supported) ||
