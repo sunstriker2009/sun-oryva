@@ -1,8 +1,11 @@
-# ORYVA Brand Archive
+# ORYVA Branding Archive
 
-- `originals/` contains a byte-identical copy of the **approved README SVG adaptation**, not the unavailable original raster concept board. Active and archived copies share Git blob SHA `a08ee741e4e17615b348246eb62ebc76fef2b6bd`.
-- `intermediate/` contains the alternative panoramic SVG treatment, not used by the current README.
-- `concepts/` is reserved for genuine historical concept artwork if obtained; do not generate substitutes.
-- `retired/` is reserved for obsolete production exports if they need preservation beyond Git history.
+Nonproduction artwork and provenance are retained here. Active, approved production assets live in [../assets/](../assets/).
 
-Production assets live under `branding/assets/`. Empty directories are not committed.
+- `originals/readme-banner-v2.png`: exact Git-blob copy of the owner-approved Solar Coral Orbit README banner.
+- `originals/readme-banner-v1.svg`: exact copy of the previous **SVG adaptation**, not the original generated raster.
+- `retired/readme-banner-v1.svg`, `retired/lockup-dark.svg`, `retired/app-icon.svg`: superseded mountain-era production vectors. Do not use in current UI.
+- `intermediate/sunrise-panorama-alternate.svg`: earlier exploratory treatment.
+- `MIGRATION-NOTES.md`: historical migration record.
+
+No transparent or layered v2 master is claimed to exist. See [Brand Guide](../BRAND-GUIDE.md).
