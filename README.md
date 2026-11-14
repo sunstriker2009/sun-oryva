@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/brand/oryva-logo-readme.svg" alt="ORYVA by Sun — sunrise arc and mountain logo. Identity. Trust. Protection." width="100%">
+  <img src="branding/assets/readme-banner-v1.svg" alt="ORYVA by Sun — sunrise arc and mountain logo. Identity. Trust. Protection." width="100%">
 </p>
 
 # ORYVA by Sun
@@ -18,8 +18,8 @@ ORYVA is an independently deployable identity and security platform with reusabl
 - CI integration tests against Keycloak and PostgreSQL, including real signed JWT requests.
 
 ## Brand
-- [Brand guide](docs/brand/BRAND-GUIDE.md)
-- [Brand assets](assets/brand/)
+- [Brand guide](branding/BRAND-GUIDE.md)
+- [Brand assets](branding/assets/) · [Archive](branding/archive/README.md)
 
 ## Documentation
 - [Architecture overview](docs/architecture/OVERVIEW.md)
