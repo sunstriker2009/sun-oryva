@@ -7,7 +7,9 @@ import { oidcAuthorizationResponse, oidcCallbackResponse, oidcLogoutResponse,
 
 const endpoint = "https://id.example.test/realms/oryva/protocol/openid-connect/auth";
 const url = endpoint + "?response_type=code&code_challenge_method=S256&state=" +
-  "s".repeat(43) + "&nonce=" + "n".repeat(43);
+  "s".repeat(43) + "&nonce=" + "n".repeat(43) +
+  "&client_id=oryva-console&redirect_uri=https%3A%2F%2Fconsole.example.test%2Fauth%2Fcallback" +
+  "&scope=openid%20profile%20email&code_challenge=" + "c".repeat(43);
 test("authorization response redirects without leaking browser binding to URL", () => {
   const cookie = createOidcBindingCookie();
   const response = oidcAuthorizationResponse(url, cookie, endpoint);
@@ -49,4 +51,21 @@ test("rejects open redirects, unsafe providers and malformed cookie descriptors"
   assert.throws(() => serializeOidcCookie({
     ...cookie, options: { ...cookie.options, domain: "evil.test" },
   }), /unavailable/);
+});
+
+test("rejects duplicate, missing or malformed critical OIDC redirect parameters", () => {
+  const cookie = createOidcBindingCookie();
+  for (const name of ["client_id", "redirect_uri", "scope", "code_challenge", "state", "nonce"]) {
+    const duplicate = url + "&" + name + "=attacker";
+    assert.throws(() => oidcAuthorizationResponse(duplicate, cookie, endpoint), /unavailable/);
+    const removed = new URL(url);
+    removed.searchParams.delete(name);
+    assert.throws(() => oidcAuthorizationResponse(removed.toString(), cookie, endpoint), /unavailable/);
+  }
+  for (const [name, value] of [["scope", "profile email"], ["code_challenge", "short"],
+    ["client_id", "bad client"], ["state", "short"], ["nonce", "short"]]) {
+    const invalid = new URL(url);
+    invalid.searchParams.set(name, value);
+    assert.throws(() => oidcAuthorizationResponse(invalid.toString(), cookie, endpoint), /unavailable/);
+  }
 });
