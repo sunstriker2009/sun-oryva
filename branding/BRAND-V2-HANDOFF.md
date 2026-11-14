@@ -11,7 +11,7 @@
 
 ## Outstanding
 - Transparent canonical symbol; no verified layered source currently exists.
-- v2 compact SVG symbol, lockups, monochrome/light variants.
+- Seven compact SVG symbol and lockup variants proposed in a follow-up PR; owner visual approval pending.
 - Nine PNG icon exports have been uploaded and moved to `branding/assets/icons/`; small-size optical QA and symbol approval remain pending.
 - Final palette, typography and small-size accessibility validation.
 
