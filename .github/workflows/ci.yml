@@ -28,6 +28,22 @@ jobs:
           dotnet run --project tests/unit/Sun.Security.GuardedSession.PolicyTests/Sun.Security.GuardedSession.PolicyTests.csproj -c Release
   frontend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: oryva_test
+          POSTGRES_PASSWORD: oryva_test
+          POSTGRES_DB: oryva_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U oryva_test -d oryva_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ORYVA_OIDC_TEST_DATABASE_URL: postgres://oryva_test:oryva_test@localhost:5432/oryva_test
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
