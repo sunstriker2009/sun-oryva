@@ -8,7 +8,7 @@ test("issues unique Secure HttpOnly host-only short-lived cookie", () => {
   assert.notEqual(a.value, b.value);
   assert.equal(a.options.secure, true);
   assert.equal(a.options.httpOnly, true);
-  assert.equal(a.options.sameSite, "strict");
+  assert.equal(a.options.sameSite, "lax");
   assert.equal(a.options.path, "/");
   assert.equal(a.options.maxAge, 300);
   assert.equal(Object.hasOwn(a.options, "domain"), false);
@@ -21,6 +21,7 @@ test("rejects absent, duplicated, malformed and oversized cookie headers", () =>
   for (const header of ["", "other=123", `${pair}; ${pair}`, `${cookie.name}=short`, `${pair}=extra`, "a".repeat(8193)])
     assert.throws(() => readOidcBindingCookie(header), /unavailable/);
   assert.equal(clearOidcBindingCookie().options.maxAge, 0);
+  assert.equal(clearOidcBindingCookie().options.sameSite, "lax");
 });
 test("passes only server-generated binding into store and fails closed on mismatch", async () => {
   let issued;
