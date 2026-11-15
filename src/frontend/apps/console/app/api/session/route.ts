@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { resolveServerAuthorization } from "../../../lib/auth-boundary";
+import { canAccessResource, resolveServerAuthorization } from "../../../lib/auth-boundary";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +17,11 @@ export async function GET() {
   if (auth.kind === "unauthenticated")
     return NextResponse.json({ status: "anonymous" }, {
       status: 401,
+      headers: { "Cache-Control": "no-store", "Pragma": "no-cache" },
+    });
+  if (!canAccessResource(auth, "workspace"))
+    return NextResponse.json({ status: "unavailable" }, {
+      status: 503,
       headers: { "Cache-Control": "no-store", "Pragma": "no-cache" },
     });
   return NextResponse.json({ status: "authenticated" }, {
