@@ -10,6 +10,8 @@ test("logout requires same-origin POST and revokes server-side session before cl
   assert.match(route, /origin !== config\.consoleOrigin/);
   assert.match(route, /target\.origin !== config\.consoleOrigin/);
   assert.match(route, /target\.pathname !== "\/api\/auth\/logout"/);
+  assert.match(route, /target\.search !== ""/);
+  assert.match(route, /target\.hash !== ""/);
   assert.match(route, /sec-fetch-site/);
   assert.match(route, /readSessionCookie/);
   assert.match(route, /createOidcSessionStore\(pool\)\.revoke/);
