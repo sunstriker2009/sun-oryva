@@ -11,6 +11,10 @@ const url = () => {
   u.searchParams.set("code_challenge_method", "S256");
   u.searchParams.set("state", "s".repeat(43));
   u.searchParams.set("nonce", "n".repeat(43));
+  u.searchParams.set("client_id", "oryva-console");
+  u.searchParams.set("redirect_uri", "https://console.example.test/auth/callback");
+  u.searchParams.set("scope", "openid profile");
+  u.searchParams.set("code_challenge", "c".repeat(43));
   return u;
 };
 test("allows exactly one OIDC response type and PKCE method", () => {
