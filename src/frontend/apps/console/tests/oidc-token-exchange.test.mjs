@@ -52,3 +52,18 @@ test("allows explicit loopback HTTP in local development only", async () => {
   const result = await exchangeAuthorizationCode({ ...args, endpoint: "http://localhost:8080/token", redirectUri: "http://localhost:3000/callback", allowLoopbackHttp: true, fetcher: async () => response(valid) });
   assert.equal(result.expiresIn, 300);
 });
+
+test("loopback HTTP exception applies to callback host independently of token endpoint", async () => {
+  for (const redirectUri of [
+    "http://app.example.test/callback",
+    "http://192.168.1.12/callback",
+    "http://localhost.evil.test/callback",
+    "https://app.example.test/callback?code=leak",
+  ]) {
+    await assert.rejects(exchangeAuthorizationCode({ ...args,
+      endpoint: "http://localhost:8080/token", redirectUri,
+      allowLoopbackHttp: true,
+      fetcher: () => { throw Error("must not send tokens"); },
+    }), /unavailable/);
+  }
+});
