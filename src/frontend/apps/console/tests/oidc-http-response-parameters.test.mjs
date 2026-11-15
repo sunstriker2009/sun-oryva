@@ -32,3 +32,16 @@ test("rejects embedded credentials in target or configured endpoint", () => {
   assert.throws(() => oidcAuthorizationResponse(url().toString(), cookie,
     "https://user:password@identity.example.test/realms/oryva/auth"), /unavailable/);
 });
+
+test("rejects unsafe callback redirect URIs at the final HTTP boundary", () => {
+  for (const value of [
+    "javascript:alert(1)", "http://remote.example.test/callback",
+    "https://user:pass@console.example.test/auth/callback",
+    "https://console.example.test/auth/callback#fragment",
+    "https://console.example.test/auth/callback?token=leak",
+    "/auth/callback",
+  ]) {
+    const u = url(); u.searchParams.set("redirect_uri", value);
+    assert.throws(() => oidcAuthorizationResponse(u.toString(), cookie, endpoint), /unavailable/);
+  }
+});
