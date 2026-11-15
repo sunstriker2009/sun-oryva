@@ -53,3 +53,21 @@ test("rejects expired sessions, invalid cookies and database errors", async () =
   await assert.rejects(failing.create({ subject: "user", issuer: "https://id.example.test" }),
     e => e.message === "OIDC session unavailable");
 });
+
+test("rejects blank, padded and oversized identity fields on creation and resolution", async () => {
+  const db = database(), store = createOidcSessionStore(db);
+  for (const subject of ["", " ", " user", "user ", "x".repeat(257)]) {
+    await assert.rejects(store.create({ subject, issuer: "https://id.example.test" }), /unavailable/);
+  }
+  for (const issuer of ["", " ", " https://id.example.test", "https://id.example.test ", "x".repeat(2049)]) {
+    await assert.rejects(store.create({ subject: "user", issuer }), /unavailable/);
+  }
+  assert.equal(db.rows.size, 0);
+  const { token } = await store.create({ subject: "user", issuer: "https://id.example.test" });
+  const row = [...db.rows.values()][0];
+  row.subject = " ";
+  await assert.rejects(store.resolve({ token }), /unavailable/);
+  row.subject = "user";
+  row.issuer = "https://id.example.test ";
+  await assert.rejects(store.resolve({ token }), /unavailable/);
+});
