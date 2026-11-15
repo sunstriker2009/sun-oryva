@@ -26,6 +26,8 @@ test("role gate only grants master security and master-admin user/audit access",
 
 test("resource guard rejects malformed trusted authorization at runtime boundary", () => {
   const source = read("lib/auth-boundary.ts");
+  assert.match(source, /authorization\.active !== true/);
+  assert.match(source, /readonly active: true/);
   assert.match(source, /typeof authorization\.subject !== "string"/);
   assert.match(source, /!\["master", "admin", "viewer"\]\.includes\(authorization\.role\)/);
 });
