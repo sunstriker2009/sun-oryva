@@ -1,12 +1,22 @@
-<p align="center">
-  <img src="branding/assets/readme-banner.png" alt="ORYVA by Sun — Solar Coral Orbit ring logo. Identity. Trust. Protection." width="100%">
-</p>
+<div align="center">
+
+<img src="branding/assets/readme-banner.png" alt="ORYVA by Sun — Solar Coral Orbit ring logo. Identity. Trust. Protection." width="100%" />
 
 # ORYVA by Sun
 
-**SUN-001 · Identity. Trust. Protection.**
+**Identity. Trust. Protection.**
 
-ORYVA is an independently deployable identity and security platform with reusable ASP.NET Core and React/Next.js integration packages. MarketPilot AI is its first planned consumer, not a dependency.
+**An independent identity and security platform for connected applications.**
+
+Bring authentication, authorization and user administration into a reusable platform that applications can integrate through ASP.NET Core and React/Next.js packages. ORYVA combines Keycloak-based identity with application-managed access and a Master, Admin and Viewer role model, giving SUN products a shared security foundation.
+
+[Architecture](docs/architecture/OVERVIEW.md) · [Integration Guide](docs/architecture/INTEGRATION.md) · [Development Checklist](MASTER-CHECKLIST.md)
+
+</div>
+
+---
+
+ORYVA is independently deployable. MarketPilot AI is its first planned consumer, not a dependency. Integration packages are under development and are not yet published.
 
 **Status (2026-11-01):** Backend v1 is **in progress**, not production-ready. Sole-master bootstrap, signed Keycloak JWT authorization, database-backed active admin/viewer access, guarded provisioning, activation, database-first revocation, atomic viewer reservation/preparation audits and PostgreSQL-backed cross-replica management write quotas are implemented and integration-tested. **Secure invitations, user-controlled credential enrollment, password change/recovery, complete lifecycle auditing, edge/login/recovery abuse protection, production Keycloak least-privilege configuration and final release gates remain outstanding.** Browser OIDC integration, React UI and consumer integration are separate unfinished workstreams.
 
