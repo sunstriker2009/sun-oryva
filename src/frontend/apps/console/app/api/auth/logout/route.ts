@@ -20,7 +20,12 @@ export async function POST(request: Request) {
   try {
     const config = readOidcRuntimeConfig();
     const origin = request.headers.get("origin");
-    if (origin !== config.consoleOrigin ||
+    // Require the request target itself to be the configured public endpoint.
+    // An Origin header alone does not authenticate a forwarded Host or URL.
+    const target = new URL(request.url);
+    if (target.origin !== config.consoleOrigin ||
+        target.pathname !== "/api/auth/logout" ||
+        origin !== config.consoleOrigin ||
         request.headers.get("sec-fetch-site") === "cross-site")
       return new Response(null, { status: 403, headers: { "Cache-Control": "no-store" } });
 
