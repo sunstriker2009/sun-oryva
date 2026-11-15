@@ -86,7 +86,7 @@ export function oidcAuthorizationResponse(authorizationUrl, bindingCookie, allow
   try { callback = new URL(target.searchParams.get("redirect_uri")); }
   catch { throw fail(); }
   if (callback.username || callback.password || callback.hash ||
-      callback.search || callback.pathname !== "/auth/callback" ||
+      callback.search ||
       (callback.protocol !== "https:" && !(callback.protocol === "http:" &&
         ["localhost", "127.0.0.1", "[::1]"].includes(callback.hostname)))) throw fail();
   const h = new Headers(headers);
