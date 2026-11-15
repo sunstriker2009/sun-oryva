@@ -40,8 +40,8 @@ export function createOidcSessionStore(db) {
   if (!db || typeof db.query !== "function") throw fail();
   return Object.freeze({
     async create({ subject, issuer, now = new Date() }) {
-      if (typeof subject !== "string" || !subject || subject.length > 256 ||
-          typeof issuer !== "string" || !issuer || issuer.length > 2048 ||
+      if (typeof subject !== "string" || !subject.trim() || subject !== subject.trim() || subject.length > 256 ||
+          typeof issuer !== "string" || !issuer.trim() || issuer !== issuer.trim() || issuer.length > 2048 ||
           !(now instanceof Date) || !Number.isFinite(now.getTime())) throw fail();
       const token = randomBytes(32).toString("base64url");
       try {
@@ -66,8 +66,10 @@ export function createOidcSessionStore(db) {
           [hash(token), now.toISOString()]
         );
         if (result.rowCount !== 1 || typeof result.rows?.[0]?.subject !== "string" ||
-            !result.rows[0].subject || typeof result.rows[0].issuer !== "string" ||
-            !result.rows[0].issuer) throw fail();
+            !result.rows[0].subject.trim() || result.rows[0].subject !== result.rows[0].subject.trim() ||
+            result.rows[0].subject.length > 256 || typeof result.rows[0].issuer !== "string" ||
+            !result.rows[0].issuer.trim() || result.rows[0].issuer !== result.rows[0].issuer.trim() ||
+            result.rows[0].issuer.length > 2048) throw fail();
         return Object.freeze({ subject: result.rows[0].subject, issuer: result.rows[0].issuer });
       } catch { throw fail(); }
     },
