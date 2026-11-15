@@ -14,8 +14,10 @@ export async function exchangeAuthorizationCode({ endpoint, clientId, redirectUr
       !/^[A-Za-z0-9_-]{43,128}$/.test(verifier) || code.length > 4096) throw invalid();
   let callback;
   try { callback = new URL(redirectUri); } catch { throw invalid(); }
-  if ((callback.protocol !== "https:" && !(allowLoopbackHttp && loopback && callback.protocol === "http:")) ||
-      callback.hash || callback.username || callback.password) throw invalid();
+  if ((callback.protocol !== "https:" && !(allowLoopbackHttp &&
+        ["localhost", "127.0.0.1", "[::1]"].includes(callback.hostname) &&
+        callback.protocol === "http:")) ||
+      callback.hash || callback.search || callback.username || callback.password) throw invalid();
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 15000) throw invalid();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
