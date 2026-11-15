@@ -25,6 +25,7 @@ export async function POST(request: Request) {
     const target = new URL(request.url);
     if (target.origin !== config.consoleOrigin ||
         target.pathname !== "/api/auth/logout" ||
+        target.search !== "" || target.hash !== "" ||
         origin !== config.consoleOrigin ||
         request.headers.get("sec-fetch-site") === "cross-site")
       return new Response(null, { status: 403, headers: { "Cache-Control": "no-store" } });
