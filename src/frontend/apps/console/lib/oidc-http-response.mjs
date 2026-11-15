@@ -80,6 +80,15 @@ export function oidcAuthorizationResponse(authorizationUrl, bindingCookie, allow
       !target.searchParams.get("scope")?.split(" ").includes("openid") ||
       target.searchParams.getAll("code_challenge").length !== 1 ||
       !/^[A-Za-z0-9_-]{43}$/.test(target.searchParams.get("code_challenge") ?? "")) throw fail();
+  // A malformed callback URI must never leave the final HTTP boundary.
+  // Exact callback allowlisting is enforced upstream by runtime configuration.
+  let callback;
+  try { callback = new URL(target.searchParams.get("redirect_uri")); }
+  catch { throw fail(); }
+  if (callback.username || callback.password || callback.hash ||
+      callback.search || callback.pathname !== "/auth/callback" ||
+      (callback.protocol !== "https:" && !(callback.protocol === "http:" &&
+        ["localhost", "127.0.0.1", "[::1]"].includes(callback.hostname)))) throw fail();
   const h = new Headers(headers);
   h.set("location", target.toString());
   h.append("set-cookie", serializeOidcCookie(bindingCookie));
