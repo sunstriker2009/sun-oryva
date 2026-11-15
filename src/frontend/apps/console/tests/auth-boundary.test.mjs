@@ -29,3 +29,9 @@ test("resource guard rejects malformed trusted authorization at runtime boundary
   assert.match(source, /typeof authorization\.subject !== "string"/);
   assert.match(source, /!\["master", "admin", "viewer"\]\.includes\(authorization\.role\)/);
 });
+
+test("session endpoint validates runtime authorization before authenticating", () => {
+  const endpoint = read("app/api/session/route.ts");
+  assert.match(endpoint, /canAccessResource\(auth, "workspace"\)/);
+  assert.match(endpoint, /if \(!canAccessResource\(auth, "workspace"\)\)/);
+});
