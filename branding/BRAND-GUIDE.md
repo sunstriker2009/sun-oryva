@@ -12,7 +12,7 @@ The approved high-resolution image is the visual source of truth. Vector lockups
 ## Active asset
 | Path | Role |
 |---|---|
-| `branding/assets/readme-banner-v2.png` | Approved high-resolution raster README banner |
+| `branding/assets/readme-banner.png` | Approved high-resolution raster README banner |
 
 The exact same Git blob is preserved at `branding/archive/originals/readme-banner-v2.png`. This is an exact byte-for-byte archival copy of the committed approved banner, **not** a claim that a layered/transparent source exists.
 
@@ -27,7 +27,7 @@ The earlier alternative panorama remains in `branding/archive/intermediate/`. Th
 **Do not use retired SVGs in new production UI.** The v2 SVG symbol and lockups have not yet been approved or committed.
 
 
-## Uploaded PNG icon exports (v2 symbol proposal)
+## Supplied PNG icon exports
 
 Nine PNG icon exports were supplied by the owner and are organized under `branding/assets/icons/`:
 
@@ -53,3 +53,11 @@ These are the uploaded *symbol-proposal* PNG exports, distinct from the already 
 - Validate README legibility on GitHub mobile and desktop.
 
 See [SUN Product Branding Standard](https://github.com/sunstriker2009/sun-ecosystem/blob/main/docs/governance/PRODUCT-BRANDING.md).
+
+## Canonical registry layout
+
+The stable banner path is `branding/assets/readme-banner.png`; it uses the exact previously approved v2 banner bytes. The archived original retains its historical filename.
+
+The proposed canonical `branding/assets/symbol.png` reuses the existing supplied `branding/assets/icons/icon-1024.png` byte-for-byte. A versioned reference copy is retained as `branding/assets/refs/symbol-canonical-v2.png`. This is canonical-path adoption of existing artwork, not a new extraction, redraw or claim of a layered master. Merging this branding PR records approval for registry synchronization of that existing symbol. Earlier derivative-pending notes describe the state before this canonical adoption; no SVG variants are required by this cleanup.
+
+Production icons remain in `branding/assets/icons/`. Reference documentation and versioned source copies belong in `branding/assets/refs/`. All nine icon binaries remain unchanged. Palette, typography, contrast and native-size application QA remain separate work.
