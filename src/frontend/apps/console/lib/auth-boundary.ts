@@ -16,7 +16,10 @@ export function canAccessResource(
   authorization: ServerAuthorization,
   resource: ProtectedResource,
 ): boolean {
-  if (authorization.kind !== "authorized" || authorization.subject.trim() === "")
+  if (authorization.kind !== "authorized" ||
+      typeof authorization.subject !== "string" ||
+      authorization.subject.trim() === "" ||
+      !["master", "admin", "viewer"].includes(authorization.role))
     return false;
   switch (resource) {
     case "workspace": return true;
