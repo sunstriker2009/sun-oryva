@@ -8,7 +8,7 @@
 export type ServerAuthorization =
   | { readonly kind: "unauthenticated" }
   | { readonly kind: "unavailable" }
-  | { readonly kind: "authorized"; readonly subject: string; readonly role: "master" | "admin" | "viewer" };
+  | { readonly kind: "authorized"; readonly subject: string; readonly active: true; readonly role: "master" | "admin" | "viewer" };
 
 export type ProtectedResource = "workspace" | "users" | "audit" | "security";
 
@@ -17,6 +17,7 @@ export function canAccessResource(
   resource: ProtectedResource,
 ): boolean {
   if (authorization.kind !== "authorized" ||
+      authorization.active !== true ||
       typeof authorization.subject !== "string" ||
       authorization.subject.trim() === "" ||
       !["master", "admin", "viewer"].includes(authorization.role))
