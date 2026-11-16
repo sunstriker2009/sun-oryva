@@ -1,0 +1,27 @@
+name: Install branding ZIP on this branch
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - 'branding/revisions/*.zip'
+permissions:
+  contents: write
+  actions: write
+  pull-requests: read
+concurrency:
+  group: branding-install-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  install:
+    if: ${{ github.repository == 'sunstriker2009/sun-oryva' && github.actor == 'sunstriker2009' && !github.event.deleted }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: true
+      # Pinned to the reviewed FOUNDRY action; no source scripts from the ZIP execute.
+      - uses: sunstriker2009/sun-foundry/actions/install-branding-zip@c1680fc22fb35f9542b65dfb1b79449c0970a154
+        with:
+          validation-workflows: ci.yml
