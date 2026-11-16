@@ -1,4 +1,4 @@
-# ORYVA Next.js server-side access boundary
+# OUTPOST Next.js server-side access boundary
 
 The console now contains protected server-rendered workspace, users, audit and
 security routes. Every route invokes a server-side resource guard before

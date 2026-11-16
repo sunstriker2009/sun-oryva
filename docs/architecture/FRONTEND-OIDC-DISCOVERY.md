@@ -1,4 +1,4 @@
-# ORYVA OIDC discovery milestone
+# OUTPOST OIDC discovery milestone
 
 The Next.js console has a server-only OpenID Connect discovery module.
 It fetches issuer metadata with a timeout, rejects redirects, avoids caching,

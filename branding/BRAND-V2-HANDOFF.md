@@ -1,4 +1,4 @@
-# ORYVA Solar Coral Orbit — v2 Migration Status
+# OUTPOST Solar Coral Orbit — v2 Migration Status
 
 **Approved:** Solar Coral Orbit ring, sun flare and star; aubergine, solar coral, magenta and gold. Tagline: Identity. Trust. Protection.
 

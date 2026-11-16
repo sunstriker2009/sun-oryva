@@ -4,7 +4,7 @@
 
 ## Invariant and ownership
 
-ORYVA owns a singleton reservation row in its PostgreSQL database, with `singleton_id = 1` enforced by both the primary key and a CHECK constraint. This guarantees **at most one** active master reservation in the database. The initial existence of a master is a separate provisioning requirement. Keycloak owns passwords, credentials, authentication and user sessions. The Keycloak bootstrap administrator is never the ORYVA master.
+OUTPOST owns a singleton reservation row in its PostgreSQL database, with `singleton_id = 1` enforced by both the primary key and a CHECK constraint. This guarantees **at most one** active master reservation in the database. The initial existence of a master is a separate provisioning requirement. Keycloak owns passwords, credentials, authentication and user sessions. The Keycloak bootstrap administrator is never the OUTPOST master.
 
 ## Planned provisioning protocol
 
@@ -24,7 +24,7 @@ ORYVA owns a singleton reservation row in its PostgreSQL database, with `singlet
 - Crash after pending insert, remote user creation, role assignment, activation and enablement; verify deterministic recovery.
 - API timeouts, stale sessions, duplicate usernames, revoked bootstrap credentials, compromised or missing secrets.
 - Unauthorized admin attempts to create a master or another admin.
-- Manual Keycloak role changes outside ORYVA: periodic reconciliation must detect and alert on multiple masters, not silently pick one.
+- Manual Keycloak role changes outside OUTPOST: periodic reconciliation must detect and alert on multiple masters, not silently pick one.
 - No passwords, access tokens, recovery codes or raw secrets in logs or database.
 
 ## Implementation acceptance gate

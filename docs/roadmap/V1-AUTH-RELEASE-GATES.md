@@ -1,4 +1,4 @@
-# ORYVA v1 authentication release gates
+# OUTPOST v1 authentication release gates
 
 This is a **blocking release contract**, not evidence of production readiness. The OIDC routes exist behind explicit server-side configuration; do not enable them for production users until the remaining gates pass.
 

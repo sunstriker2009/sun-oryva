@@ -1,4 +1,4 @@
-# ORYVA frontend console shell (initial)
+# OUTPOST frontend console shell (initial)
 
 The `@sun-security/console` Next.js app supplies a responsive, keyboard-accessible
 public shell, metadata and explicit integration status. It deliberately does
@@ -15,7 +15,7 @@ The CI frontend job must build the Next.js app and run its boundary test.
 2. Server-owned session storage, Secure HttpOnly SameSite cookies, CSRF
    protection, logout revocation and explicit trusted-proxy configuration.
 3. A server-side current-principal endpoint that validates Keycloak tokens
-   and the ORYVA database account state. UI role capabilities remain UX only.
+   and the OUTPOST database account state. UI role capabilities remain UX only.
 4. Protected server routes, authorization-negative integration tests,
    browser accessibility tests and session-expiration E2E.
 

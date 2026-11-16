@@ -1,6 +1,6 @@
 # Viewer authorization — database-first foundation
 
-ORYVA's `Oryva.Viewer` policy now requires an **exclusive validated Keycloak
+OUTPOST's `Oryva.Viewer` policy now requires an **exclusive validated Keycloak
 realm role** and an active PostgreSQL subject. A `viewer` JWT alone never
 authorizes a request. The `admin` realm role continues to grant read-only
 viewer access **only** while the same subject is an active admin in PostgreSQL.

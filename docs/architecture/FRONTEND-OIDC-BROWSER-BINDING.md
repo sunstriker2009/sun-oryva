@@ -1,4 +1,4 @@
-# ORYVA OIDC browser-binding cookie
+# OUTPOST OIDC browser-binding cookie
 
 This module adds an isolated cookie contract for the PostgreSQL-backed OIDC login transaction. It is **not yet registered as an HTTP login or callback route**.
 

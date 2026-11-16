@@ -1,4 +1,4 @@
-# ORYVA frontend OIDC authorization-code exchange boundary
+# OUTPOST frontend OIDC authorization-code exchange boundary
 
 This module is an **unregistered server-only transport primitive**, not a complete authentication flow.
 

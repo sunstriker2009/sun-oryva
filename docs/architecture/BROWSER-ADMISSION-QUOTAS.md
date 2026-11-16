@@ -1,4 +1,4 @@
-# ORYVA browser admission quotas (migration 022)
+# OUTPOST browser admission quotas (migration 022)
 
 **Status:** opt-in, unregistered backend foundation. Not a public enrollment route, not email ownership verification, not a browser session, and not credential authorization.
 

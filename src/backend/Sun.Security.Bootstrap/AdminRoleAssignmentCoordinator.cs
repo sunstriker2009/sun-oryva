@@ -80,7 +80,7 @@ public sealed class AdminRoleAssignmentCoordinator(
         var onlyAdmin = direct.Count == 1 && direct[0] == "admin" &&
                         effective.Count == 1 && effective[0] == "admin";
         if (!noRole && !onlyAdmin)
-            throw new InvalidOperationException("Conflicting ORYVA roles on admin candidate.");
+            throw new InvalidOperationException("Conflicting OUTPOST roles on admin candidate.");
         return onlyAdmin;
     }
 }

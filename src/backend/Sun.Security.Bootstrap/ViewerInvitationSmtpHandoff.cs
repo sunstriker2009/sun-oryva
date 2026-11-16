@@ -181,8 +181,8 @@ public sealed class LoopbackMailpitInvitationTransport
     {
         using var message = new MailMessage("oryva-ci@example.invalid", recipientEmail)
         {
-            Subject = "ORYVA isolated invitation handoff test",
-            Body = "ORYVA one-time invitation code (test only): " + bearerCode,
+            Subject = "OUTPOST isolated invitation handoff test",
+            Body = "OUTPOST one-time invitation code (test only): " + bearerCode,
             IsBodyHtml = false
         };
         using var client = new SmtpClient(host, port)

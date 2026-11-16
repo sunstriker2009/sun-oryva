@@ -1,6 +1,6 @@
 # Opt-in browser bearer cookie boundary
 
-**Status:** internal opt-in implementation verified and merged in [PR #110](https://github.com/sunstriker2009/sun-oryva/pull/110) (`a30e0a25`); all four final-head PR workflows passed on `d05a607a`, including full-stack PostgreSQL/Keycloak E2E. Post-merge main CI is separately tracked. No production API route, browser authentication, Keycloak credential mutation, email ownership verification, SMTP dispatch or account activation.
+**Status:** internal opt-in implementation verified and merged in [PR #110](https://github.com/sunstriker2009/sun-outpost/pull/110) (`a30e0a25`); all four final-head PR workflows passed on `d05a607a`, including full-stack PostgreSQL/Keycloak E2E. Post-merge main CI is separately tracked. No production API route, browser authentication, Keycloak credential mutation, email ownership verification, SMTP dispatch or account activation.
 
 ## Contract
 

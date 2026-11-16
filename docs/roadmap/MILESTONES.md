@@ -1,4 +1,4 @@
-# ORYVA Milestones
+# OUTPOST Milestones
 
 Updated 2026-11-01. States distinguish merged, tested work from pending PRs.
 
@@ -19,12 +19,12 @@ Updated 2026-11-01. States distinguish merged, tested work from pending PRs.
 - [x] Admin provisioning append-only audit and PostgreSQL/Keycloak E2E
 - [x] Viewer authorization requires an active database subject (#65)
 - [x] Guarded viewer preparation, exclusive role assignment and recovery by active master/admin (#66, #67)
-- [x] Read-only, locked viewer activation readiness with Keycloak/PostgreSQL E2E ([PR #68](https://github.com/sunstriker2009/sun-oryva/pull/68), verified)
-- [x] Guarded viewer activation with durable recovery and audit ([PR #69](https://github.com/sunstriker2009/sun-oryva/pull/69), PR CI verified)
-- [x] Database-first viewer revocation by active master/admin ([PR #70](https://github.com/sunstriker2009/sun-oryva/pull/70), PR and post-merge CI verified)
+- [x] Read-only, locked viewer activation readiness with Keycloak/PostgreSQL E2E ([PR #68](https://github.com/sunstriker2009/sun-outpost/pull/68), verified)
+- [x] Guarded viewer activation with durable recovery and audit ([PR #69](https://github.com/sunstriker2009/sun-outpost/pull/69), PR CI verified)
+- [x] Database-first viewer revocation by active master/admin ([PR #70](https://github.com/sunstriker2009/sun-outpost/pull/70), PR and post-merge CI verified)
 - [ ] Secure invitations, credential enrollment, password change and recovery
 - [ ] Production-grade audit coverage, **distributed** rate limiting, least-privilege deployment and observability
-- [x] In-process management POST rate limiter with per-subject quotas and HTTP tests ([PR #71](https://github.com/sunstriker2009/sun-oryva/pull/71), PR CI verified; does not satisfy distributed production quotas)
+- [x] In-process management POST rate limiter with per-subject quotas and HTTP tests ([PR #71](https://github.com/sunstriker2009/sun-outpost/pull/71), PR CI verified; does not satisfy distributed production quotas)
 - [ ] Final negative-path and full-stack release validation; package/deployment guidance
 
 No production accounts or environments are changed by the integration tests.

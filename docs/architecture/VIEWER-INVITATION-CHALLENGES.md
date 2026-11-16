@@ -1,17 +1,17 @@
-# ORYVA viewer invitation challenge foundation (backend v1)
+# OUTPOST viewer invitation challenge foundation (backend v1)
 
 **Status:** Internal database primitives and isolated loopback Mailpit SMTP handoff only. **No invitation, redemption or enrollment HTTP endpoint is exposed.** No production SMTP delivery, browser ceremony, password-setting, Keycloak email verification, user enablement or production rollout is implemented.
 
 ## Why a separate challenge is required
 
-In isolated Keycloak 26.3.5 testing (PR #79), `execute-actions-email` rejected a disabled, unverified account. ORYVA must not temporarily enable an unverified account to use that native action link. The proposed future flow therefore separates email ownership proof from Keycloak credentials and the existing guarded viewer activation coordinator.
+In isolated Keycloak 26.3.5 testing (PR #79), `execute-actions-email` rejected a disabled, unverified account. OUTPOST must not temporarily enable an unverified account to use that native action link. The proposed future flow therefore separates email ownership proof from Keycloak credentials and the existing guarded viewer activation coordinator.
 
 The internal `ViewerInvitationChallengeStore` supports a deliberately narrow first phase:
 
 1. A **separately JWT-authorized** database-active master/admin requests issuance for a `role_assigned` viewer with a bound Keycloak subject. The store independently checks the exact issuer subject and active role in PostgreSQL and holds a shared issuer row lock through commit. No viewer, anonymous, stale or forged management subject may issue.
 2. A PostgreSQL row lock serializes issuance. Reissue revokes any previous unconsumed challenge in the same transaction. A 256-bit CSPRNG token is returned in memory **only** to the caller; the database stores its SHA-256 digest, recipient email snapshot, issuer subject/role and 15-minute expiry.
 3. A future independently reviewed, authenticated delivery and browser ceremony may present the token. `ConsumeAsync` records possession **once** with an atomic PostgreSQL update only while the viewer is still `role_assigned`, subject-bound, email-unchanged, unrevoked and unexpired.
-4. Consumption **does not** mark Keycloak email verified, set a credential, change any ORYVA account state, assign a role or enable login. It is not an enrollment completion signal.
+4. Consumption **does not** mark Keycloak email verified, set a credential, change any OUTPOST account state, assign a role or enable login. It is not an enrollment completion signal.
 
 Migration 016 also snapshots the exact bound Keycloak subject at issuance. Redemption
 takes a shared lock on the viewer row and requires the subject to match this
@@ -45,7 +45,7 @@ The recipient snapshot intentionally detects email changes after issuance. A dig
 
 Issuance uses a shared lock on the matching active master singleton or active admin provisioning row inside the same PostgreSQL transaction that revokes and creates challenges. An admin deactivation update cannot commit while an already-authorized issuance holds this lock; once deactivation commits, subsequent issuance is denied. Missing, mismatched, pending and deactivated actors fail closed before any challenge mutation. The PostgreSQL E2E seeds isolated test actors, tests forged subjects and role mismatches, and confirms denied issuance does not revoke an outstanding token.
 
-This is defense in depth, **not** a public API or a replacement for JWT validation. The caller must authenticate and verify the exclusive master/admin realm role and token subject; the store accepts no unauthenticated public traffic. No email, Keycloak credential write or activation is added. [PR #83](https://github.com/sunstriker2009/sun-oryva/pull/83) passed all five PR workflows, including real PostgreSQL/Keycloak E2E, and was squash-merged as `937fd43f`. This does not unblock enrollment.
+This is defense in depth, **not** a public API or a replacement for JWT validation. The caller must authenticate and verify the exclusive master/admin realm role and token subject; the store accepts no unauthenticated public traffic. No email, Keycloak credential write or activation is added. [PR #83](https://github.com/sunstriker2009/sun-outpost/pull/83) passed all five PR workflows, including real PostgreSQL/Keycloak E2E, and was squash-merged as `937fd43f`. This does not unblock enrollment.
 
 ## Operations and validation
 
@@ -150,7 +150,7 @@ redacted ambiguous failure and retry. Production TLS/SMTP credentials, safe
 link/session design, browser email proof, Keycloak credential enrollment,
 rate limits and release review remain blocked.
 
-**Verification:** [PR #90](https://github.com/sunstriker2009/sun-oryva/pull/90) was squash-merged as `716d12b6` after all five workflows passed on final head `793b8ce6`, including schema validation and PostgreSQL/Mailpit full-stack E2E. Post-merge main CI is separately tracked; production SMTP, credential enrollment and activation remain blocked.
+**Verification:** [PR #90](https://github.com/sunstriker2009/sun-outpost/pull/90) was squash-merged as `716d12b6` after all five workflows passed on final head `793b8ce6`, including schema validation and PostgreSQL/Mailpit full-stack E2E. Post-merge main CI is separately tracked; production SMTP, credential enrollment and activation remain blocked.
 
 ## Explicit single-iteration Mailpit dispatcher (verified PR #92)
 
@@ -175,7 +175,7 @@ No external email is sent. A future production dispatcher requires a separately
 reviewed TLS/authenticated SMTP implementation, secrets management, bounded
 scheduling, monitoring, abuse quotas, and the browser ownership ceremony.
 
-**Verification:** [PR #92](https://github.com/sunstriker2009/sun-oryva/pull/92) was squash-merged as `3b831ad9` after all four applicable PR workflows passed on final head `71d728f3`, including real PostgreSQL/Mailpit E2E. Post-merge main CI is not independently verified. No production delivery or enrollment was enabled.
+**Verification:** [PR #92](https://github.com/sunstriker2009/sun-outpost/pull/92) was squash-merged as `3b831ad9` after all four applicable PR workflows passed on final head `71d728f3`, including real PostgreSQL/Mailpit E2E. Post-merge main CI is not independently verified. No production delivery or enrollment was enabled.
 
 ## Concurrent issuer regression (pending CI)
 

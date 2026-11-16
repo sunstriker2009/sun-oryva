@@ -2,7 +2,7 @@
 
 **Status:** Implemented primitive, coordinator integration pending.
 
-`MasterProvisioningLock` uses a fixed PostgreSQL session advisory-lock key and keeps a dedicated database connection open for the duration of a provisioning attempt. A second ORYVA instance sharing the same database receives no lease while the first holds it. Disposal clears the connection pool before closing the session to avoid retaining a session lock in the pool.
+`MasterProvisioningLock` uses a fixed PostgreSQL session advisory-lock key and keeps a dedicated database connection open for the duration of a provisioning attempt. A second OUTPOST instance sharing the same database receives no lease while the first holds it. Disposal clears the connection pool before closing the session to avoid retaining a session lock in the pool.
 
 ## Requirements for callers
 

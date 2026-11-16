@@ -19,7 +19,7 @@ public static class OryvaJwtAuthenticationExtensions
             !string.IsNullOrWhiteSpace(issuer.Query) ||
             !string.IsNullOrWhiteSpace(issuer.Fragment) ||
             string.IsNullOrWhiteSpace(options.Audience))
-            throw new ArgumentException("Require an HTTPS ORYVA realm issuer and nonempty API audience.");
+            throw new ArgumentException("Require an HTTPS OUTPOST realm issuer and nonempty API audience.");
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(bearer =>
@@ -83,7 +83,7 @@ public static class OryvaJwtAuthenticationExtensions
                                     .ToArray();
                                 if (assigned.Length > 1)
                                 {
-                                    context.Fail("Conflicting ORYVA realm roles.");
+                                    context.Fail("Conflicting OUTPOST realm roles.");
                                     return Task.CompletedTask;
                                 }
                                 if (assigned.Length == 1)

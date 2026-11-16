@@ -1,7 +1,7 @@
 # Design Foundations
 
 ## Brand application
-The ORYVA symbol conveys a protective boundary and central light. Use the [candidate vector artwork in SUN ecosystem](https://github.com/sunstriker2009/sun-ecosystem/tree/main/branding/assets/vector) without stretching, distortion or recoloring outside approved theme variants. Avoid glowing effects on form controls; reserve subtle luminous gold for branding and primary actions.
+The OUTPOST symbol conveys a protective boundary and central light. Use the [candidate vector artwork in SUN ecosystem](https://github.com/sunstriker2009/sun-ecosystem/tree/main/branding/assets/vector) without stretching, distortion or recoloring outside approved theme variants. Avoid glowing effects on form controls; reserve subtle luminous gold for branding and primary actions.
 
 ## Typography
 - Preferred UI family: Inter, fallback `system-ui, -apple-system, Segoe UI, sans-serif`.

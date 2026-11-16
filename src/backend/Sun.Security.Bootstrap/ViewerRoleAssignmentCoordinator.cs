@@ -88,7 +88,7 @@ public sealed class ViewerRoleAssignmentCoordinator(
         var onlyViewer = direct.Count == 1 && direct[0] == "viewer" &&
                          effective.Count == 1 && effective[0] == "viewer";
         if (!noRole && !onlyViewer)
-            throw new InvalidOperationException("Conflicting ORYVA realm roles on viewer candidate.");
+            throw new InvalidOperationException("Conflicting OUTPOST realm roles on viewer candidate.");
         return onlyViewer;
     }
 }

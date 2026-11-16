@@ -1,6 +1,6 @@
 # Automatic branding ZIP installation
 
-ORYVA opts into the [shared SUN branding installer](https://github.com/sunstriker2009/sun-foundry/blob/main/docs/BRANDING-ZIP-INSTALLER.md).
+OUTPOST opts into the [shared SUN branding installer](https://github.com/sunstriker2009/sun-foundry/blob/main/docs/BRANDING-ZIP-INSTALLER.md).
 
 1. Create a feature branch from main after the opt-in PR has merged. Older branches must first include `.github/workflows/branding-auto-install.yml`.
 2. Commit exactly one unnumbered ZIP directly under `branding/revisions/`, keeping its original filename. Create the directory if needed.
@@ -17,4 +17,4 @@ The hook uses the repository-scoped GitHub token and the reviewed FOUNDRY action
 
 Merging the branding PR approves its canonical symbol for the existing daily/manual Ecosystem reconciliation. Rollback uses the manual SUN Branding ZIP Installer workflow to restore a snapshot through a new revision and reviewed PR; historical snapshots remain intact.
 
-Opt-in does not change approved product identity or resume paused functional-development schedules. No live ORYVA upload or rollback is claimed by this setup.
+Opt-in does not change approved product identity or resume paused functional-development schedules. No live OUTPOST upload or rollback is claimed by this setup.

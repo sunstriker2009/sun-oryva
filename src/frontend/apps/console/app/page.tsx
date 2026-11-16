@@ -5,7 +5,7 @@ export default function HomePage() {
     <>
       <p className="eyebrow">Security administration</p>
       <h1>One identity foundation. Built for trust.</h1>
-      <p>ORYVA provides a reusable foundation for identity, authorization and administration.</p>
+      <p>OUTPOST provides a reusable foundation for identity, authorization and administration.</p>
       <section className="panel" aria-labelledby="access-heading">
         <h2 id="access-heading">Console access</h2>
         <p className="status" role="status">Authentication integration pending</p>

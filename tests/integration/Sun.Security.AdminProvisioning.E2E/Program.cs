@@ -60,7 +60,7 @@ if (user.Enabled || !string.Equals(user.Email, email, StringComparison.OrdinalIg
     throw new Exception("Keycloak disabled identity ownership verification failed.");
 if ((await keycloak.GetDirectOryvaRolesAsync(user.Id)).Count != 0 ||
     (await keycloak.GetEffectiveOryvaRolesAsync(user.Id)).Count != 0)
-    throw new Exception("New admin candidate already has ORYVA roles.");
+    throw new Exception("New admin candidate already has OUTPOST roles.");
 Console.WriteLine("PASS canonical Keycloak identity, ownership marker and empty roles");
 
 await store.BindVerifiedSubjectAsync(reservation.Id, username, email, actor, user.Id);

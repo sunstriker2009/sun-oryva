@@ -1,4 +1,4 @@
-# ORYVA by Sun — Brand Guide
+# OUTPOST by Sun — Brand Guide
 
 **Product:** SUN-001  
 **Approved visual identity:** Solar Coral Orbit (v2)  

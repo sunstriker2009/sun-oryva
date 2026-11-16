@@ -61,8 +61,8 @@ public sealed class SmtpStartTlsInvitationTransport : IViewerInvitationMailTrans
 
             using var message = new MailMessage(senderEmail, recipient)
             {
-                Subject = "ORYVA by Sun invitation code",
-                Body = "Your ORYVA one-time invitation code: " + bearerCode +
+                Subject = "OUTPOST by Sun invitation code",
+                Body = "Your OUTPOST one-time invitation code: " + bearerCode +
                        "\nThis code expires 15 minutes after issuance. " +
                        "Do not forward it. Enrollment is not yet available.",
                 IsBodyHtml = false
@@ -91,7 +91,7 @@ public sealed class SmtpStartTlsInvitationTransport : IViewerInvitationMailTrans
         }
     }
 
-    public override string ToString() => "ORYVA STARTTLS SMTP transport (credentials redacted)";
+    public override string ToString() => "OUTPOST STARTTLS SMTP transport (credentials redacted)";
 
     private static string RequireSingleMailbox(string email)
     {

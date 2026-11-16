@@ -1,4 +1,4 @@
-# ORYVA OIDC callback response validation
+# OUTPOST OIDC callback response validation
 
 This module validates the shape of an authorization-code callback against
 a trusted, browser-bound server transaction: exact state comparison, a single

@@ -1,4 +1,4 @@
-# ORYVA role policies — active database authorization
+# OUTPOST role policies — active database authorization
 
 The JWT bearer middleware validates issuer, audience, signature, lifetime and
 RS256 before mapping the Keycloak realm role into the trusted

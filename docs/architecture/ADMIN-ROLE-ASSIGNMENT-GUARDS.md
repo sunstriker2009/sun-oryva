@@ -7,7 +7,7 @@ The existing `POST /api/master/admins/prepare` endpoint creates a disabled Keycl
 1. Active master authenticates with a signed JWT and passes the PostgreSQL-backed `Oryva.ActiveMaster` policy.
 2. Normalize and validate username/email; reserve a unique admin provisioning record in PostgreSQL with deployment identity, actor subject, intended role, target username, state, and timestamps.
 3. Create a disabled Keycloak user with an ORYVA-owned provisioning marker. Reconcile retries by verifying the marker, username, email and Keycloak subject ID; never adopt unrelated users.
-4. Under a per-provisioning-record lock, verify the Keycloak user is still disabled and has no conflicting ORYVA role; assign **only** the admin realm role.
+4. Under a per-provisioning-record lock, verify the Keycloak user is still disabled and has no conflicting OUTPOST role; assign **only** the admin realm role.
 5. Provision a secure credential/invitation without returning a password or credential in API responses. Enable only after all invariants are verified.
 6. Persist an audit event for each transition, including denied attempts and recovery; do not log secrets or access tokens.
 7. Handle Keycloak/DB partial failures through explicit pending/reconciliation states. Never infer success solely from a successful HTTP request when persistence fails.

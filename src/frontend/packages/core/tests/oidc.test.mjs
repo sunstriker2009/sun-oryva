@@ -27,7 +27,7 @@ test("rejects insecure, ambiguous, or credential-bearing endpoints", () => {
     { redirectUri: "https://console.example.test/callback#fragment" },
     { redirectUri: "https://console.example.test/callback?next=evil" },
     { clientId: "" },
-    { clientId: "oryva client" },
+    { clientId: "OUTPOST client" },
   ];
   for (const override of invalid)
     assert.throws(() => parseOryvaOidcPublicConfig({ ...base, ...override }));
