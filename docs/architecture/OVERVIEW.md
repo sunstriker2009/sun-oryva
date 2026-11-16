@@ -1,8 +1,8 @@
-# ORYVA Architecture — v1
+# OUTPOST Architecture — v1
 
 **Status: approved direction; not implemented.**
 
-ORYVA comprises standards-based identity infrastructure, an optional management API and console, and reusable host integration libraries. The first consumer is MarketPilot AI; no MarketPilot-specific code belongs in ORYVA.
+OUTPOST comprises standards-based identity infrastructure, an optional management API and console, and reusable host integration libraries. The first consumer is MarketPilot AI; no MarketPilot-specific code belongs in OUTPOST.
 
 ```mermaid
 flowchart TB
@@ -37,7 +37,7 @@ flowchart TB
 
 ## Boundaries
 - Keycloak: identity credentials, authentication, sessions and token issuance.
-- ORYVA management API: privileged provisioning, controlled role assignments, auditing and optional centralized administration.
+- OUTPOST management API: privileged provisioning, controlled role assignments, auditing and optional centralized administration.
 - ASP.NET Core SDK: token validation and local policy enforcement; do not call management API for every request.
 - Frontend SDK: OIDC/session integration and accessible components; frontend permission checks are UX only.
 - Consumer applications: business data and domain-specific administrative operations.

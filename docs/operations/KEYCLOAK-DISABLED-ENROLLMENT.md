@@ -1,10 +1,10 @@
 # Keycloak disabled-account enrollment: negative security gate
 
-**Status:** isolated CI regression coverage only. This does **not** authorize ORYVA invitation issuance or prove an end-to-end enrollment ceremony.
+**Status:** isolated CI regression coverage only. This does **not** authorize OUTPOST invitation issuance or prove an end-to-end enrollment ceremony.
 
 ## Invariants exercised
 
-Before the CI test setup relaxes email verification for its separate JWT direct-grant fixtures, `tests/integration/keycloak_disabled_enrollment_e2e.py` asserts that the imported ORYVA realm has self-registration disabled, password reset disabled and email verification required.
+Before the CI test setup relaxes email verification for its separate JWT direct-grant fixtures, `tests/integration/keycloak_disabled_enrollment_e2e.py` asserts that the imported OUTPOST realm has self-registration disabled, password reset disabled and email verification required.
 
 The test creates a dedicated direct-grant client and two randomly named **disabled** throwaway identities in isolated Keycloak 26.3.5:
 

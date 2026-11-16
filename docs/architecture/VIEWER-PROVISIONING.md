@@ -31,7 +31,7 @@ contacting Keycloak. Conflicting reservations return HTTP 409. The service
 creates a disabled, email-unverified Keycloak user carrying the exact reservation
 UUID as the ownership marker. It rereads the canonical identity and requires
 matching username, email, ownership marker, disabled status, no password
-credential, and **zero direct or effective ORYVA realm roles**.
+credential, and **zero direct or effective OUTPOST realm roles**.
 
 Only then can the SQL row move from `reserved` to `prepared`, bound to the
 verified Keycloak subject. `prepared` is **not active**; viewer API access
@@ -71,11 +71,11 @@ credential enrollment remain outside this audit increment.
 
 `POST /api/viewers/provisioning/{id}/assign-viewer-role` requires the same
 active-master/active-admin authorization as viewer preparation, with a single
-validated token subject and exclusive ORYVA role. It takes a cross-instance
+validated token subject and exclusive OUTPOST role. It takes a cross-instance
 PostgreSQL advisory lease and verifies the exact reservation subject,
 ownership marker, username, email, disabled and unverified-email status,
 absence of password credentials, and zero or exclusively `viewer` direct
-**and effective** ORYVA realm roles. Any `master` or `admin` role fails closed.
+**and effective** OUTPOST realm roles. Any `master` or `admin` role fails closed.
 
 A `prepared` reservation must have zero roles. The coordinator commits
 `role_assignment_pending` and its actor-bound audit event before contacting
@@ -88,7 +88,7 @@ is still disabled and does not authorize viewer API access. A repeat on
 `GET /api/viewers/provisioning/{id}/audit` returns the append-only,
 transactional role-assignment audit history to active master/admin callers.
 The database rejects UPDATE, DELETE and TRUNCATE of the audit table. These
-records contain no credentials or tokens. Advisory locking coordinates ORYVA
+records contain no credentials or tokens. Advisory locking coordinates OUTPOST
 writers, but does not fence external Keycloak administrators; production
 permissions must restrict competing privileged writers.
 
@@ -105,7 +105,7 @@ Under the same lease used for viewer preparation and role assignment, it checks:
 1. The persisted viewer reservation is exactly `role_assigned` and has a bound subject.
 2. Keycloak resolves the exact username, subject, email and single
    `oryva.provisioning.id` ownership marker, and the user is still **disabled**.
-3. Direct **and effective** ORYVA realm roles are each exclusively `viewer`;
+3. Direct **and effective** OUTPOST realm roles are each exclusively `viewer`;
    an inherited `admin` or `master` role rejects readiness.
 4. A password credential exists, email is verified and the required-actions
    collection is present and empty.
@@ -119,7 +119,7 @@ This preflight **does not** create credentials, mark emails verified, change
 database state, enable Keycloak users, or authorize viewer APIs. Readiness
 is point-in-time; any later activation coordinator must reacquire the lease
 and repeat every verification immediately before a durable activation intent.
-Advisory locks coordinate ORYVA instances but cannot fence an external
+Advisory locks coordinate OUTPOST instances but cannot fence an external
 Keycloak administrator, so least-privilege Keycloak administration is required.
 
 The CI integration suite uses isolated test-only credentials to demonstrate

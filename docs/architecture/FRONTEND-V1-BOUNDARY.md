@@ -1,4 +1,4 @@
-# ORYVA frontend v1 — initial boundary
+# OUTPOST frontend v1 — initial boundary
 
 ## Backend freeze
 

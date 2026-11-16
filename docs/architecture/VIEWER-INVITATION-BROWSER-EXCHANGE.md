@@ -36,7 +36,7 @@ Migration 022 adds PostgreSQL-backed global and source-IP fixed-minute admission
 
 ## Verified internal browser-secret lifecycle (migration 023)
 
-[PR #108](https://github.com/sunstriker2009/sun-oryva/pull/108) added atomic, fixed-expiry bearer rotation and revocation with append-only metadata-only audit and PostgreSQL concurrency E2E. **All five final PR-head workflows passed on `5212c2fb` and PR #108 merged as `9d326998`**; post-merge main CI is separate. These methods remain internal: no cookies, HTTP enrollment, authentication, Keycloak email ownership proof or credential/activation authorization. See [browser session lifecycle](BROWSER-SESSION-LIFECYCLE.md).
+[PR #108](https://github.com/sunstriker2009/sun-outpost/pull/108) added atomic, fixed-expiry bearer rotation and revocation with append-only metadata-only audit and PostgreSQL concurrency E2E. **All five final PR-head workflows passed on `5212c2fb` and PR #108 merged as `9d326998`**; post-merge main CI is separate. These methods remain internal: no cookies, HTTP enrollment, authentication, Keycloak email ownership proof or credential/activation authorization. See [browser session lifecycle](BROWSER-SESSION-LIFECYCLE.md).
 
 ## Threat boundaries and unfinished work
 

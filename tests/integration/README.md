@@ -1,4 +1,4 @@
-# ORYVA integration tests
+# OUTPOST integration tests
 
 GitHub Actions runs isolated PostgreSQL 17 and Keycloak 26.3.5 services.
 The workflow applies migrations in order before running the .NET test runners.

@@ -1,4 +1,4 @@
-# ORYVA master provisioning — ownership and recovery design
+# OUTPOST master provisioning — ownership and recovery design
 
 **Status:** Design and ownership-marker primitive only. No automatic master provisioning.
 
@@ -10,7 +10,7 @@
 4. Never take over an existing unmarked Keycloak account, even if the username matches.
 5. Initial master password is provided through an environment/secret-manager secret, never checked into source control, logged or stored in PostgreSQL.
 6. Role grants and account enablement are security-sensitive operations; fail closed on ambiguous outcomes.
-7. No master account is authorized merely because it has the Keycloak role: ORYVA authorization must also match the active PostgreSQL subject.
+7. No master account is authorized merely because it has the Keycloak role: OUTPOST authorization must also match the active PostgreSQL subject.
 
 ## Planned coordinator state machine
 
@@ -32,7 +32,7 @@
 | Creation succeeded but response lost | Re-query username and verify marker |
 | Password update response lost | Re-apply initial secret only while identity remains disabled and bootstrap pending; never overwrite a changed password on an active master |
 | Role assignment uncertain | Re-query full membership and ownership before retry |
-| Enabled but PostgreSQL pending | Disable access at ORYVA authorization boundary; verify identity and role, then activate |
+| Enabled but PostgreSQL pending | Disable access at OUTPOST authorization boundary; verify identity and role, then activate |
 | PostgreSQL active but Keycloak drift | Deny privileged authorization and alert; do not auto-create replacement master |
 
 ## Security decisions required before enabling provisioning

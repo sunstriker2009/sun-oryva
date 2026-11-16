@@ -1,4 +1,4 @@
-# ORYVA invitation outbox health — internal monitoring contract
+# OUTPOST invitation outbox health — internal monitoring contract
 
 **Status:** Internal read-only PostgreSQL aggregate snapshot. This does not
 register a hosted worker, open a management or public endpoint, enable SMTP,

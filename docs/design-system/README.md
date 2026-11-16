@@ -1,8 +1,8 @@
-# ORYVA Design System v1.0 — Foundation
+# OUTPOST Design System v1.0 — Foundation
 
-**Status:** PROPOSED · **Scope:** authentication and administration UX · **Product:** ORYVA by Sun
+**Status:** PROPOSED · **Scope:** authentication and administration UX · **Product:** OUTPOST by Sun
 
-ORYVA's design system is a reusable visual and interaction foundation for identity, access and security interfaces. The ORYVA repository is the **product design and implementation source of truth**; SUN ecosystem retains high-level brand governance. App-specific React components belong in the ORYVA frontend package (`@sun-security/ui` proposed; naming subject to implementation review).
+OUTPOST's design system is a reusable visual and interaction foundation for identity, access and security interfaces. The OUTPOST repository is the **product design and implementation source of truth**; SUN ecosystem retains high-level brand governance. App-specific React components belong in the OUTPOST frontend package (`@sun-security/ui` proposed; naming subject to implementation review).
 
 ## Principles
 1. **Trust first:** recognizable identity, no misleading states or decorative security claims.
@@ -21,7 +21,7 @@ ORYVA's design system is a reusable visual and interaction foundation for identi
 - [CSS custom properties](tokens/oryva.dark.css)
 
 ## Status and boundaries
-The SUN and ORYVA vector marks remain **logo candidates**; do not imply that the artwork is legally cleared or formally approved. This package is a design specification, **not implemented screens** or a working auth system. Authorization decisions must always be enforced on the backend.
+The SUN and OUTPOST vector marks remain **logo candidates**; do not imply that the artwork is legally cleared or formally approved. This package is a design specification, **not implemented screens** or a working auth system. Authorization decisions must always be enforced on the backend.
 
 ## Planned packages
 - `@sun-security/tokens`: generated theme assets, semantic colors, spacing and typography.

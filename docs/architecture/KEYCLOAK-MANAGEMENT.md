@@ -2,7 +2,7 @@
 
 **Status:** Minimal transport adapter; not a complete master bootstrap.
 
-The .NET 10 `KeycloakManagementClient` uses a dedicated Keycloak client-credentials identity to obtain an access token from the ORYVA realm and call the Keycloak Admin REST API. It can find a user by exact username and create a **disabled** user. It does not set credentials, assign master roles, enable accounts, or grant access.
+The .NET 10 `KeycloakManagementClient` uses a dedicated Keycloak client-credentials identity to obtain an access token from the OUTPOST realm and call the Keycloak Admin REST API. It can find a user by exact username and create a **disabled** user. It does not set credentials, assign master roles, enable accounts, or grant access.
 
 ## Operator responsibilities
 

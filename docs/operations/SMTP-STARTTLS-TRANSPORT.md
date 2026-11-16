@@ -1,4 +1,4 @@
-# ORYVA invitation SMTP STARTTLS transport — operator gate
+# OUTPOST invitation SMTP STARTTLS transport — operator gate
 
 **Scope:** An opt-in, unregistered transport implementation only. No hosted
 dispatcher, automatic delivery, external email, public invitation route,

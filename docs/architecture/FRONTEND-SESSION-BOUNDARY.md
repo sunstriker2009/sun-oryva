@@ -1,4 +1,4 @@
-# ORYVA frontend session presentation boundary
+# OUTPOST frontend session presentation boundary
 
 The reusable core package now defines a **display-only** session snapshot and
 screen state model. Consumers must obtain the snapshot from a server endpoint

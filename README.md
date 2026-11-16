@@ -1,14 +1,14 @@
 <div align="center">
 
-<img src="branding/assets/readme-banner.png" alt="ORYVA by Sun — Solar Coral Orbit ring logo. Identity. Trust. Protection." width="100%" />
+<img src="branding/assets/readme-banner.png" alt="OUTPOST by Sun — Solar Coral Orbit ring logo. Identity. Trust. Protection." width="100%" />
 
-# ORYVA by Sun
+# OUTPOST by Sun
 
 **Identity. Trust. Protection.**
 
 **An independent identity and security platform for connected applications.**
 
-Bring authentication, authorization and user administration into a reusable platform that applications can integrate through ASP.NET Core and React/Next.js packages. ORYVA combines Keycloak-based identity with application-managed access and a Master, Admin and Viewer role model, giving SUN products a shared security foundation.
+Bring authentication, authorization and user administration into a reusable platform that applications can integrate through ASP.NET Core and React/Next.js packages. OUTPOST combines Keycloak-based identity with application-managed access and a Master, Admin and Viewer role model, giving SUN products a shared security foundation.
 
 [Architecture](docs/architecture/OVERVIEW.md) · [Integration Guide](docs/architecture/INTEGRATION.md) · [Development Checklist](MASTER-CHECKLIST.md) · [Current Handoff](docs/roadmap/DEVELOPMENT-HANDOFF.md)
 
@@ -16,7 +16,7 @@ Bring authentication, authorization and user administration into a reusable plat
 
 ---
 
-ORYVA is independently deployable. MarketPilot AI is its first planned consumer, not a dependency. Integration packages are under development and are not yet published.
+OUTPOST is independently deployable. MarketPilot AI is its first planned consumer, not a dependency. Integration packages are under development and are not yet published.
 
 **Historical status (2026-11-01; superseded for current frontend state by the [development handoff](docs/roadmap/DEVELOPMENT-HANDOFF.md) and [v1 authentication release gates](docs/roadmap/V1-AUTH-RELEASE-GATES.md)):** Backend v1 is **in progress**, not production-ready. Sole-master bootstrap, signed Keycloak JWT authorization, database-backed active admin/viewer access, guarded provisioning, activation, database-first revocation, atomic viewer reservation/preparation audits and PostgreSQL-backed cross-replica management write quotas are implemented and integration-tested. **Secure invitations, user-controlled credential enrollment, password change/recovery, complete lifecycle auditing, edge/login/recovery abuse protection, production Keycloak least-privilege configuration and final release gates remain outstanding.** Browser OIDC integration, React UI and consumer integration are separate unfinished workstreams.
 

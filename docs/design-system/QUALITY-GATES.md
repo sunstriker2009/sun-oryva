@@ -21,7 +21,7 @@
 - Loading and destructive states are understandable without color or animation.
 - All actions have a server-confirmed outcome; duplicate requests are handled safely.
 - Component tokens can be swapped without editing component-specific color literals.
-- No undocumented dependencies on MarketPilot AI; ORYVA stays standalone and reusable.
+- No undocumented dependencies on MarketPilot AI; OUTPOST stays standalone and reusable.
 
 ## Definition of done
 A component is not “production ready” until it has tests for keyboard operation, state handling, error paths, contrast and integration with backend permissions. A design mockup alone does not satisfy this gate.

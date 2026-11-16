@@ -1,4 +1,4 @@
-# ORYVA OIDC ID-token verification boundary
+# OUTPOST OIDC ID-token verification boundary
 
 This is a server-side, isolated **RS256-only** verifier for an OIDC ID token received after an authorization-code exchange. It pins the issuer, client ID (audience), expected transaction nonce and trusted JWKS endpoint. The token cannot select its own verification endpoint or algorithm.
 

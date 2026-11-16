@@ -1,4 +1,4 @@
-# ORYVA frontend OIDC configuration boundary
+# OUTPOST frontend OIDC configuration boundary
 
 This milestone introduces strict validation for **public** OIDC configuration:
 issuer, public client ID and exact login/logout callback destinations.

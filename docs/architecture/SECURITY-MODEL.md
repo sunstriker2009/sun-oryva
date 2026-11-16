@@ -12,7 +12,7 @@
 | Operational settings | Yes | If explicitly granted | No |
 | Audit log access | Yes | If explicitly granted | No |
 
-Exactly one master per isolated ORYVA deployment. Provision idempotently from an injected bootstrap secret; prevent duplicate masters under concurrency. Never overwrite an established password when the bootstrap secret changes. Require master password change on initial sign-in, and plan privileged MFA and recovery before production.
+Exactly one master per isolated OUTPOST deployment. Provision idempotently from an injected bootstrap secret; prevent duplicate masters under concurrency. Never overwrite an established password when the bootstrap secret changes. Require master password change on initial sign-in, and plan privileged MFA and recovery before production.
 
 ## Trust boundaries
 All role and permission checks are server-side. Admin must never grant admin or master privileges. Management API alone may use privileged Keycloak administration credentials. Validate issuer, audience, lifetime and signing keys on every token; apply least privilege and deny by default. Business-specific company/email configuration belongs to consumers and is delegated via explicit permissions.
