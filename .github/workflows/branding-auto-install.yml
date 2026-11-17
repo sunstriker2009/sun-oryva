@@ -24,4 +24,4 @@ jobs:
       # Pinned to the reviewed FOUNDRY action; no source scripts from the ZIP execute.
       - uses: sunstriker2009/sun-foundry/actions/install-branding-zip@c1680fc22fb35f9542b65dfb1b79449c0970a154
         with:
-          validation-workflows: ci.yml
+          validation-workflows: ci.yml,master-concurrency-tests.yml
