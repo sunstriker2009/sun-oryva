@@ -1,0 +1,24 @@
+{
+  "changed": [
+    "icons/icon-1024.png",
+    "icons/icon-128.png",
+    "icons/icon-16.png",
+    "icons/icon-180.png",
+    "icons/icon-192.png",
+    "icons/icon-24.png",
+    "icons/icon-256.png",
+    "icons/icon-32.png",
+    "icons/icon-48.png",
+    "icons/icon-512.png",
+    "icons/icon-64.png",
+    "icons/icon-96.png",
+    "readme-banner.png",
+    "refs/symbol-extraction-source.png",
+    "social-card.png",
+    "social-preview.png",
+    "symbol.png"
+  ],
+  "revision": "v2.zip",
+  "operation": "install",
+  "source": "pilot-gatehouse-jade-assets.zip"
+}
