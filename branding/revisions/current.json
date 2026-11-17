@@ -18,7 +18,7 @@
     "social-preview.png",
     "symbol.png"
   ],
-  "revision": "v3.zip",
+  "revision": "v4.zip",
   "operation": "rollback",
-  "source": "v1.zip"
+  "source": "v2.zip"
 }
