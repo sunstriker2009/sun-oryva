@@ -18,7 +18,7 @@
     "social-preview.png",
     "symbol.png"
   ],
-  "revision": "v2.zip",
-  "operation": "install",
-  "source": "pilot-gatehouse-jade-assets.zip"
+  "revision": "v3.zip",
+  "operation": "rollback",
+  "source": "v1.zip"
 }
