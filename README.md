@@ -28,8 +28,7 @@ OUTPOST is independently deployable. MarketPilot AI is its first planned consume
 - CI integration tests against Keycloak and PostgreSQL, including real signed JWT requests.
 
 ## Brand
-- [Brand guide](branding/BRAND-GUIDE.md)
-- [Brand assets](branding/assets/) · [Archive](branding/archive/README.md)
+- [Brand assets](branding/assets/) · [Product metadata](branding/manifest.json)
 
 ## Documentation
 - [Architecture overview](docs/architecture/OVERVIEW.md)
