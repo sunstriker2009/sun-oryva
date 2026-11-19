@@ -22,6 +22,6 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: true
       # Pinned to the reviewed FOUNDRY action; no source scripts from the ZIP execute.
-      - uses: sunstriker2009/sun-foundry/actions/install-branding-zip@8d8c0d908ad7d242c34ab4c2f28a43ce18ee79ae
+      - uses: sunstriker2009/sun-foundry/actions/install-branding-zip@50848c37c7d171da35e08f59e3b272a0db342616
         with:
           validation-workflows: ci.yml,master-concurrency-tests.yml
