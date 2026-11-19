@@ -1,6 +1,6 @@
 # OUTPOST by Sun — Brand Guide
 
-**Product:** SUN-001  
+**Product:** SUN-C001  
 **Approved visual identity:** Solar Coral Orbit (v2)  
 **Tagline:** Identity. Trust. Protection.
 

@@ -1,6 +1,6 @@
 # OUTPOST by Sun — Development handoff
 
-**Prepared:** 2026-11-15 · **Repository:** `sunstriker2009/sun-outpost` · **SUN product:** SUN-001
+**Prepared:** 2026-11-15 · **Repository:** `sunstriker2009/sun-outpost` · **SUN product:** SUN-C001
 
 > **Read this first when resuming after a chat archive or memory cleanup.** This document is a snapshot, not a replacement for current GitHub state. Verify `main`, open PRs, required checks, scheduled automation status, and current documentation before modifying anything. Never treat the last PR number here as permanently current.
 
@@ -47,6 +47,6 @@ OUTPOST by Sun — **Identity. Trust. Protection.** — is an independently depl
 
 ## Restart prompt
 
-> Resume OUTPOST by Sun (SUN-001) from `docs/roadmap/DEVELOPMENT-HANDOFF.md`. Verify the current `main` commit, open PRs, CI, and release gates first. Identify the smallest highest-value unfinished security/feature milestone, implement it with tests on a feature branch and open a PR. Do not merge without approval. Preserve fail-closed authorization and report confirmed state versus unknowns. Update the handoff and milestone docs as work progresses.
+> Resume OUTPOST by Sun (SUN-C001) from `docs/roadmap/DEVELOPMENT-HANDOFF.md`. Verify the current `main` commit, open PRs, CI, and release gates first. Identify the smallest highest-value unfinished security/feature milestone, implement it with tests on a feature branch and open a PR. Do not merge without approval. Preserve fail-closed authorization and report confirmed state versus unknowns. Update the handoff and milestone docs as work progresses.
 
 **Snapshot limitations:** This note is based on inspected GitHub content, not a full local build or real browser/Keycloak deployment test. The release gates remain unverified unless newer CI or operational evidence explicitly proves them.

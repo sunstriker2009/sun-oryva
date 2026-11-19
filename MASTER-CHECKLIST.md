@@ -1,6 +1,6 @@
 # OUTPOST Master Development Checklist
 
-**Product:** SUN-001 · **Updated:** 2026-11-02 · **Legend:** [x] merged and verified; [ ] outstanding.
+**Product:** SUN-C001 · **Updated:** 2026-11-02 · **Legend:** [x] merged and verified; [ ] outstanding.
 
 **Baseline:** .NET 10+, ASP.NET Core 10+, C# 14+, Keycloak 26.3.5, PostgreSQL 17. EF Core 10+ where applicable.
 
